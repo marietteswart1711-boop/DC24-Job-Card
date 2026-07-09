@@ -1,0 +1,14 @@
+{
+  "SMTP_HOST": "smtp.gmail.com",
+  "SMTP_PORT": 587,
+  "SMTP_USE_TLS": true,
+  "SMTP_USE_SSL": false,
+  "SMTP_USER": "your-email@example.com",
+  "SMTP_PASSWORD": "your-app-password-here",
+  "EMAIL_FROM": "your-email@example.com",
+  "EMAIL_TO": "info@drainclean24.co.za",
+  "COMPANY_NAME": "DC24",
+  "SERVER_PORT": 8000,
+  "START_JOBNO": 1,
+  "GOOGLE_REVIEW_URL": "https://www.google.com/maps?cid=6400425998313730930"
+}

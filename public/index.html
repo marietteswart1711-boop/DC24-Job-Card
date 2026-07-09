@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>DC24 Job Card</title>
+<style>
+  * { box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
+  body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#f2f5f8; color:#222; padding-bottom:40px; }
+  header { background:#1a1a1a; color:#fff; padding:16px 18px; position:sticky; top:0; z-index:10; display:flex; justify-content:space-between; align-items:center; }
+  header .h-title { font-size:17px; font-weight:800; }
+  header .h-sub { font-size:11px; opacity:0.75; margin-top:2px; }
+  header .jobno-badge { background:#c0392b; color:#fff; font-weight:800; font-size:15px; padding:6px 12px; border-radius:6px; text-align:center; }
+  header .jobno-badge .lbl { font-size:9px; font-weight:600; opacity:0.85; display:block; }
+  nav { display:flex; background:#fff; border-bottom:1px solid #ddd; position:sticky; top:64px; z-index:10; }
+  nav button { flex:1; padding:12px; border:none; background:none; font-size:13px; font-weight:600; color:#888; border-bottom:3px solid transparent; }
+  nav button.active { color:#1a1a1a; border-bottom-color:#c0392b; }
+  .content { padding:14px; max-width:640px; margin:0 auto; }
+  .card { background:#fff; border-radius:10px; padding:16px; margin-bottom:14px; box-shadow:0 1px 4px rgba(0,0,0,0.08); }
+  .card-title { font-size:12px; font-weight:700; color:#888; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:10px; }
+  .field { margin-bottom:12px; }
+  .field label { display:block; font-size:12px; font-weight:600; color:#555; margin-bottom:4px; }
+  .field input, .field textarea, .field select {
+    width:100%; border:1px solid #ccc; border-radius:6px; padding:10px; font-size:15px; background:#fafbfc;
+  }
+  .field input[readonly] { background:#eef6ee; border-color:#8fbf8f; font-weight:700; color:#1a6b1a; }
+  .field textarea { min-height:70px; resize:vertical; }
+  .field .hint { font-size:11px; color:#999; margin-top:3px; }
+  .row2 { display:flex; gap:10px; }
+  .row2 > div { flex:1; }
+  .row3 { display:flex; gap:10px; }
+  .row3 > div { flex:1; }
+  .chip-group { display:flex; flex-wrap:wrap; gap:8px; }
+  .chip { display:inline-flex; align-items:center; gap:6px; border:1.5px solid #ccc; border-radius:20px; padding:7px 13px; font-size:13px; cursor:pointer; background:#fafbfc; user-select:none; }
+  .chip input { width:15px; height:15px; accent-color:#1a1a1a; }
+  .chip:has(input:checked) { background:#1a1a1a; color:#fff; border-color:#1a1a1a; }
+  .chip-with-amount { display:flex; align-items:center; gap:8px; }
+  .chip-with-amount input[type="text"], .chip-with-amount input[type="number"] { width:70px; padding:6px 8px; border:1px solid #ccc; border-radius:5px; font-size:13px; }
+  .sub-note { font-size:11px; color:#999; margin:2px 0 8px; }
+  .mat-row { display:flex; gap:8px; margin-bottom:8px; align-items:center; }
+  .mat-row input { flex:1; }
+  .mat-row button { background:none; border:none; color:#c0392b; font-size:16px; padding:4px 8px; }
+  .btn { display:block; width:100%; padding:13px; border:none; border-radius:8px; font-size:15px; font-weight:700; cursor:pointer; text-align:center; }
+  .btn-primary { background:#1a1a1a; color:#fff; }
+  .btn-outline { background:#fff; border:2px solid #1a1a1a; color:#1a1a1a; }
+  .btn-add { background:#eaeaea; color:#1a1a1a; font-size:13px; padding:8px 12px; width:auto; border-radius:6px; }
+  canvas.sigpad { border:2px dashed #bbb; border-radius:8px; width:100%; height:150px; touch-action:none; background:#fff; }
+  .sig-actions { display:flex; gap:8px; margin-top:8px; }
+  .photo-grid { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+  .photo-item { position:relative; width:70px; height:70px; }
+  .photo-item img { width:100%; height:100%; object-fit:cover; border-radius:6px; }
+  .photo-item .rm { position:absolute; top:-6px; right:-6px; width:20px; height:20px; border-radius:50%; background:#c0392b; color:#fff; border:none; font-size:11px; }
+  .file-btn { position:relative; overflow:hidden; display:inline-block; }
+  .file-btn input { position:absolute; inset:0; opacity:0; }
+  .toast { position:fixed; top:78px; left:50%; transform:translateX(-50%); background:#222; color:#fff; padding:10px 18px; border-radius:20px; font-size:13px; z-index:100; opacity:0; transition:0.3s; white-space:nowrap; max-width:90vw; text-align:center; }
+  .toast.show { opacity:1; }
+  .hist-item { border-bottom:1px solid #eee; padding:10px 0; }
+  .hist-item:last-child { border-bottom:none; }
+  .hist-top { display:flex; justify-content:space-between; font-size:13px; font-weight:700; }
+  .hist-sub { font-size:12px; color:#888; margin-top:2px; }
+  .filter-bar { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px; align-items:flex-end; }
+  .filter-bar .field { margin-bottom:0; flex:1; min-width:110px; }
+  .filter-bar .btn-outline { width:auto; padding:9px 14px; font-size:12px; flex:0 0 auto; }
+  .hist-table-wrap { overflow-x:auto; }
+  table.hist-table { width:100%; border-collapse:collapse; font-size:12.5px; white-space:nowrap; }
+  table.hist-table th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:0.4px; color:#888; padding:6px 8px; border-bottom:2px solid #eee; }
+  table.hist-table td { padding:8px; border-bottom:1px solid #eee; vertical-align:middle; }
+  table.hist-table tr.flagged td { background:#fdecea; color:#a8281c; }
+  table.hist-table tr:last-child td { border-bottom:none; }
+  table.hist-table .btn-cell { display:flex; gap:6px; }
+  table.hist-table .btn-cell button { font-size:11px; padding:6px 8px; width:auto; }
+  .tag { display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:700; }
+  .tag-sent { background:#d9f2e6; color:#1a7a4c; }
+  .tag-failed { background:#fbe1e1; color:#c0392b; }
+  .empty { text-align:center; color:#999; padding:30px 10px; font-size:13px; }
+  .tab { display:none; }
+  .tab.active { display:block; }
+  .req { color:#c0392b; }
+  .spinner { display:inline-block; width:14px; height:14px; border:2px solid #fff; border-top-color:transparent; border-radius:50%; animation:spin 0.7s linear infinite; margin-right:6px; vertical-align:-2px; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .signoff-block { margin-bottom:18px; padding-bottom:16px; border-bottom:1px solid #eee; }
+  .signoff-block:last-child { border-bottom:none; margin-bottom:0; padding-bottom:0; }
+  .signoff-name { font-size:13px; font-weight:700; margin-bottom:8px; }
+  .optional-tag { font-size:10px; color:#999; font-weight:500; text-transform:none; letter-spacing:0; }
+  .hist-item.flagged { background:#fdecea; border:1.5px solid #e5b3ad; border-radius:8px; padding:10px 10px; margin-bottom:8px; }
+  .hist-item.flagged .hist-top { color:#a8281c; }
+  .hist-grid { font-size:12px; color:#555; margin-top:4px; display:grid; grid-template-columns:1fr 1fr; gap:2px 10px; }
+  .tag-disposal-yes { background:#fbe1e1; color:#a8281c; }
+  .tag-disposal-no { background:#eee; color:#777; }
+  .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:250; align-items:flex-start; justify-content:center; padding:20px; overflow-y:auto; }
+  .modal-box { background:#fff; border-radius:14px; padding:20px; max-width:460px; width:100%; margin:20px auto; }
+  .modal-box .card-title { margin-top:14px; }
+  .modal-box .card-title:first-child { margin-top:0; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="h-title">🔥 DC24 Job Card</div>
+    <div class="h-sub">Liquid Waste · Drain Cleaning · Pipe Rehabilitation</div>
+  </div>
+  <div class="jobno-badge"><span class="lbl">JOB NO.</span><span id="jobno-display">…</span></div>
+</header>
+
+<nav>
+  <button class="active" onclick="switchTab('new', this)">New Job Card</button>
+  <button onclick="switchTab('history', this)">History</button>
+</nav>
+
+<div class="content">
+
+  <!-- ===== NEW JOB CARD ===== -->
+  <div class="tab active" id="tab-new">
+
+    <div class="card">
+      <div class="card-title">Job Number</div>
+      <div class="field">
+        <label>Job No. (auto-assigned)</label>
+        <input id="f-jobno" readonly placeholder="…">
+        <div class="hint" id="jobno-hint">Fetching next job number from server…</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Customer Details</div>
+      <div class="field"><label>Name <span class="req">*</span></label><input id="f-name" placeholder="Customer / account name"></div>
+      <div class="row2">
+        <div class="field"><label>Site</label><input id="f-site" placeholder="Site name"></div>
+        <div class="field"><label>Planon Number</label><input id="f-planon" placeholder="If applicable"></div>
+      </div>
+      <div class="field"><label>Address</label><input id="f-address" placeholder="Site address"></div>
+      <div class="row2">
+        <div class="field"><label>Contact Person</label><input id="f-contact" placeholder="On-site contact"></div>
+        <div class="field"><label>Telephone Number</label><input id="f-tel" placeholder="Contact number" type="tel"></div>
+      </div>
+      <div class="field"><label>Email Address</label><input id="f-email" placeholder="Contact email" type="email"></div>
+      <div class="field"><label>Billing Information</label><input id="f-billing" placeholder="Billing reference/notes"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Job Description</div>
+      <div class="field"><label>Details <span class="req">*</span></label><textarea id="f-details" placeholder="What was done on site..."></textarea></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Job Type</div>
+      <div class="chip-group" id="grp-jobtype"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Drain Type</div>
+      <div class="chip-group" id="grp-draintype"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Liquid Waste</div>
+      <div class="chip-group" id="grp-liquidwaste"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Pump Out Internal Fattraps</div>
+      <div class="chip-group" id="grp-fattraps"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Pump External Tank</div>
+      <div class="chip-group" id="grp-exttank" style="margin-bottom:10px;"></div>
+      <div class="field"><label>Specify (if different)</label><input id="f-exttank-specify" placeholder="e.g. 4500L"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Consumables</div>
+      <div class="chip-with-amount" style="margin-bottom:8px;">
+        <label class="chip"><input type="checkbox" id="c-degreaser">Degreaser</label>
+        <input type="text" id="c-degreaser-l" placeholder="L">
+      </div>
+      <div class="chip-with-amount" style="margin-bottom:8px;">
+        <label class="chip"><input type="checkbox" id="c-disinfectant">Disinfectant</label>
+        <input type="text" id="c-disinfectant-l" placeholder="L">
+      </div>
+      <div class="chip-with-amount" style="margin-bottom:8px;">
+        <label class="chip"><input type="checkbox" id="c-acid">Acid</label>
+        <input type="text" id="c-acid-l" placeholder="L">
+      </div>
+      <div class="chip-group">
+        <label class="chip"><input type="checkbox" id="c-microbes">Microbes</label>
+        <label class="chip"><input type="checkbox" id="c-beads">Beads</label>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Waste Stream</div>
+      <div class="chip-group" id="grp-wastestream" style="margin-bottom:10px;"></div>
+      <div class="field"><label>Other</label><input id="f-wastestream-other" placeholder="e.g. Misc Meds"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Waste Type</div>
+      <div class="chip-group" id="grp-wastetype"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Quote Requirements</div>
+      <div class="field"><input id="f-quote-req" placeholder="Any quote requirements noted on site"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Materials / Parts Used</div>
+      <div id="mat-list"></div>
+      <button class="btn btn-add" onclick="addMatRow()">+ Add Material</button>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Pictures Before</div>
+      <label class="btn btn-add file-btn">📷 Add Before Photo<input type="file" accept="image/*" multiple onchange="handlePhotos(event,'before')"></label>
+      <div class="photo-grid" id="photo-grid-before"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Pictures After</div>
+      <label class="btn btn-add file-btn">📷 Add After Photo<input type="file" accept="image/*" multiple onchange="handlePhotos(event,'after')"></label>
+      <div class="photo-grid" id="photo-grid-after"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Sign-Off</div>
+
+      <div class="signoff-block">
+        <div class="signoff-name">Customer's Full Name &amp; Signature <span class="req">*</span></div>
+        <div class="field"><input id="f-customer-name" placeholder="Customer full name"></div>
+        <canvas class="sigpad" id="sig-customer"></canvas>
+        <div class="sig-actions"><button class="btn btn-outline" onclick="clearSig('customer')">Clear</button></div>
+      </div>
+
+      <div class="signoff-block">
+        <div class="signoff-name">Driver's Full Name &amp; Signature <span class="req">*</span></div>
+        <div class="field"><input id="f-driver-name" placeholder="Driver / technician full name"></div>
+        <canvas class="sigpad" id="sig-driver"></canvas>
+        <div class="sig-actions"><button class="btn btn-outline" onclick="clearSig('driver')">Clear</button></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Safe Disposal Certificate</div>
+      <div class="field" style="margin-bottom:2px;"><label>Is this job card linked to a disposal site certificate? <span class="req">*</span></label></div>
+      <div class="chip-group" id="grp-needsdisposal">
+        <label class="chip"><input type="radio" name="needsDisposal" value="yes">Yes</label>
+        <label class="chip"><input type="radio" name="needsDisposal" value="no">No</label>
+      </div>
+      <div class="hint">If Yes, this job card will be flagged red in History until the disposal certificate is uploaded — go back to it after dumping the load.</div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Comments</div>
+      <div class="field"><textarea id="f-comments" placeholder="Any additional comments"></textarea></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Please Rate Our Service</div>
+      <div class="chip-group" id="grp-rating">
+        <label class="chip"><input type="radio" name="rating" value="Poor">Poor</label>
+        <label class="chip"><input type="radio" name="rating" value="Fair">Fair</label>
+        <label class="chip"><input type="radio" name="rating" value="Good">Good</label>
+        <label class="chip"><input type="radio" name="rating" value="Excellent">Excellent</label>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Date &amp; Time</div>
+      <div class="field"><label>Date</label><input id="f-date" type="date"></div>
+      <div class="row2">
+        <div class="field"><label>Time In (1)</label><input id="f-timein1" type="time"></div>
+        <div class="field"><label>Time Out (1)</label><input id="f-timeout1" type="time"></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Time In (2)</label><input id="f-timein2" type="time"></div>
+        <div class="field"><label>Time Out (2)</label><input id="f-timeout2" type="time"></div>
+      </div>
+      <div class="hint">Second Time In/Out is optional — for jobs with a return visit on the same day.</div>
+    </div>
+
+    <button class="btn btn-primary" id="submit-btn" onclick="submitJobCard()" style="margin-top:4px;">Complete Job Card</button>
+  </div>
+
+  <!-- ===== HISTORY ===== -->
+  <div class="tab" id="tab-history">
+    <div class="card">
+      <div class="card-title">Submitted Job Cards (this device)</div>
+      <div class="filter-bar">
+        <div class="field"><label>Date From</label><input type="date" id="filter-date-from" onchange="renderHistory()"></div>
+        <div class="field"><label>Date To</label><input type="date" id="filter-date-to" onchange="renderHistory()"></div>
+        <div class="field"><label>Technician</label><select id="filter-tech" onchange="renderHistory()"><option value="">All Technicians</option></select></div>
+        <button class="btn btn-outline" onclick="clearHistoryFilters()">Clear Filters</button>
+      </div>
+      <div id="history-list"><div class="empty">No job cards submitted yet.</div></div>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div id="thankyou-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:200;align-items:center;justify-content:center;padding:20px;">
+  <div style="background:#fff;border-radius:14px;padding:26px 22px;max-width:380px;width:100%;text-align:center;">
+    <div style="font-size:42px;margin-bottom:6px;">✅</div>
+    <div style="font-size:18px;font-weight:800;margin-bottom:6px;">Job Card Complete</div>
+    <div id="thankyou-status" style="font-size:13px;color:#666;margin-bottom:20px;">Sent to the office.</div>
+    <div id="review-prompt-text" style="font-size:13px;color:#555;margin-bottom:10px;">Happy with the service? A quick Google review helps us a lot.</div>
+    <a id="review-link" href="#" target="_blank" rel="noopener" class="btn btn-primary" style="text-decoration:none;margin-bottom:10px;">⭐ Rate DC24 on Google</a>
+    <button class="btn btn-outline" onclick="closeThankYou()">Start Next Job Card</button>
+  </div>
+</div>
+
+<div id="disposal-modal" class="modal-overlay">
+  <div class="modal-box">
+    <div class="card-title">Safe Disposal Certificate — Job #<span id="modal-jobno"></span></div>
+    <div class="hint" style="margin-bottom:14px;">Complete this after dropping the load at the disposal site, then save — the job card will come off the flagged list.</div>
+
+    <div class="card-title">Disposal Site Sign-Off</div>
+    <div class="signoff-block" style="border-bottom:none;margin-bottom:8px;padding-bottom:0;">
+      <div class="field"><input id="f-modal-disposal-name" placeholder="Disposal site full name"></div>
+      <canvas class="sigpad" id="sig-disposal"></canvas>
+      <div class="sig-actions"><button class="btn btn-outline" onclick="sigPads.disposal.clear()">Clear Signature</button></div>
+    </div>
+
+    <div class="card-title">Disposal Certificate Photo</div>
+    <label class="btn btn-add file-btn">📷 Add Certificate Photo<input type="file" accept="image/*" onchange="handleCertPhoto(event)"></label>
+    <div class="photo-grid" id="photo-grid-cert"></div>
+
+    <div style="display:flex;gap:10px;margin-top:18px;">
+      <button class="btn btn-outline" onclick="closeDisposalModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveDisposalCert()">Save Certificate</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const KEY = 'dc24_jobcard_history_v1';
+let history = (() => { try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch { return []; } })();
+let pendingBefore = [], pendingAfter = [];
+let pendingCertPhoto = null;
+let modalIdx = null;
+let matCount = 0;
+let currentJobNo = null;
+let jobNoIsAuto = false;
+let publicConfig = { googleReviewUrl: '', companyName: '' };
+
+async function fetchPublicConfig() {
+  try {
+    const res = await fetch('/api/public-config');
+    if (res.ok) publicConfig = await res.json();
+  } catch (e) { /* fine — review link just won't show */ }
+}
+
+function saveHistory() {
+  try { localStorage.setItem(KEY, JSON.stringify(history.slice(-50))); }
+  catch (e) { toast('⚠️ Local storage full — older history may not save'); }
+}
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(window._toastTimer);
+  window._toastTimer = setTimeout(() => el.classList.remove('show'), 3200);
+}
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  btn.classList.add('active');
+  if (name === 'history') renderHistory();
+}
+
+// ---- Auto job number ----
+async function fetchNextJobNo() {
+  document.getElementById('jobno-hint').textContent = 'Fetching next job number from server…';
+  document.getElementById('jobno-display').textContent = '…';
+  try {
+    const res = await fetch('/api/next-jobno');
+    if (!res.ok) throw new Error('bad response');
+    const data = await res.json();
+    currentJobNo = String(data.jobNo);
+    jobNoIsAuto = true;
+    const el = document.getElementById('f-jobno');
+    el.value = currentJobNo; el.readOnly = true;
+    document.getElementById('jobno-display').textContent = currentJobNo;
+    document.getElementById('jobno-hint').textContent = 'Assigned automatically. Next card will show the following number.';
+  } catch (e) {
+    jobNoIsAuto = false;
+    const el = document.getElementById('f-jobno');
+    el.value = ''; el.readOnly = false; el.placeholder = 'No signal — enter manually';
+    document.getElementById('jobno-display').textContent = '—';
+    document.getElementById('jobno-hint').textContent = '⚠️ Could not reach server — enter the job number manually and confirm with the office.';
+  }
+}
+
+// ---- Materials ----
+function addMatRow(name = '', qty = '') {
+  const id = 'mat_' + (matCount++);
+  const div = document.createElement('div');
+  div.className = 'mat-row'; div.id = id;
+  div.innerHTML = `<input placeholder="Material/part" value="${escapeAttr(name)}" class="mat-name">
+    <input placeholder="Qty" value="${escapeAttr(qty)}" class="mat-qty" style="flex:0 0 70px;">
+    <button onclick="document.getElementById('${id}').remove()">✕</button>`;
+  document.getElementById('mat-list').appendChild(div);
+}
+function getMaterials() {
+  return Array.from(document.querySelectorAll('.mat-row')).map(row => ({
+    name: row.querySelector('.mat-name').value.trim(),
+    qty: row.querySelector('.mat-qty').value.trim()
+  })).filter(m => m.name);
+}
+
+// ---- Chip groups ----
+function renderChipGroup(groupId, options, type) {
+  const el = document.getElementById(groupId);
+  el.innerHTML = options.map(v => {
+    const inputName = type === 'radio' ? ' name="rating"' : '';
+    return `<label class="chip"><input type="${type}"${inputName} value="${escapeAttr(v)}">${escapeHtml(v)}</label>`;
+  }).join('');
+}
+renderChipGroup('grp-jobtype', ['Drain Cleaning','CCTV','Pipe Relining','Liquid Waste','Pipe Replacement','Sonde Location','Dye Test'], 'checkbox');
+renderChipGroup('grp-draintype', ['Stormwater','Sewerage','Fullbore/s','Manhole','Internal','Floor Drain'], 'checkbox');
+renderChipGroup('grp-liquidwaste', ['Internal','External','Manhole','Oil Interceptor'], 'checkbox');
+renderChipGroup('grp-fattraps', ['50L','80L','100L'], 'checkbox');
+renderChipGroup('grp-exttank', ['200L','500L','1000L'], 'checkbox');
+renderChipGroup('grp-wastestream', ['Organic','Hazardous','Non Hazardous'], 'checkbox');
+renderChipGroup('grp-wastetype', ['Sewerage','F.O.G.s','Oily Water','Contaminated Water','Sludge'], 'checkbox');
+
+function getChecked(groupId) {
+  return Array.from(document.querySelectorAll(`#${groupId} input[type="checkbox"]:checked`)).map(el => el.value);
+}
+function getRadio(groupId) {
+  const el = document.querySelector(`#${groupId} input[type="radio"]:checked`);
+  return el ? el.value : '';
+}
+
+// ---- Photos ----
+function handlePhotos(e, which) {
+  const arr = which === 'before' ? pendingBefore : pendingAfter;
+  Array.from(e.target.files || []).forEach(file => {
+    resizeImage(file, 1000, 0.7).then(dataUrl => { arr.push(dataUrl); renderPhotos(which); });
+  });
+  e.target.value = '';
+}
+function renderPhotos(which) {
+  const arr = which === 'before' ? pendingBefore : pendingAfter;
+  document.getElementById('photo-grid-' + which).innerHTML = arr.map((p, i) => `
+    <div class="photo-item"><img src="${p}"><button class="rm" onclick="removePhoto('${which}',${i})">✕</button></div>`).join('');
+}
+function removePhoto(which, i) {
+  (which === 'before' ? pendingBefore : pendingAfter).splice(i, 1);
+  renderPhotos(which);
+}
+function resizeImage(file, maxDim, quality) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.width, h = img.height;
+        if (w > h && w > maxDim) { h = Math.round(h * maxDim / w); w = maxDim; }
+        else if (h >= w && h > maxDim) { w = Math.round(w * maxDim / h); h = maxDim; }
+        const c = document.createElement('canvas'); c.width = w; c.height = h;
+        c.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(c.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = reject; img.src = ev.target.result;
+    };
+    reader.onerror = reject; reader.readAsDataURL(file);
+  });
+}
+
+// ---- Signature pads (3x) ----
+const sigPads = {};
+function makeSigPad(name) {
+  const canvas = document.getElementById('sig-' + name);
+  const ctx = canvas.getContext('2d');
+  let drawing = false, hasContent = false;
+
+  function resize() {
+    const ratio = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * ratio; canvas.height = rect.height * ratio;
+    ctx.scale(ratio, ratio);
+    ctx.lineWidth = 2.2; ctx.lineCap = 'round'; ctx.strokeStyle = '#1a1a1a';
+  }
+  function getPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    const t = e.touches ? e.touches[0] : e;
+    return { x: t.clientX - rect.left, y: t.clientY - rect.top };
+  }
+  function start(e) { drawing = true; hasContent = true; const p = getPos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); e.preventDefault(); }
+  function move(e) { if (!drawing) return; const p = getPos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); e.preventDefault(); }
+  function end() { drawing = false; }
+
+  canvas.addEventListener('mousedown', start); canvas.addEventListener('mousemove', move);
+  window.addEventListener('mouseup', end);
+  canvas.addEventListener('touchstart', start, { passive:false }); canvas.addEventListener('touchmove', move, { passive:false });
+  canvas.addEventListener('touchend', end);
+  window.addEventListener('resize', resize);
+  setTimeout(resize, 50);
+
+  return {
+    clear: () => { ctx.clearRect(0, 0, canvas.width, canvas.height); hasContent = false; },
+    hasContent: () => hasContent,
+    dataURL: () => canvas.toDataURL('image/png'),
+    resize: () => resize()
+  };
+}
+['customer','driver','disposal'].forEach(n => sigPads[n] = makeSigPad(n));
+function clearSig(name) { sigPads[name].clear(); }
+
+// ---- Submit ----
+document.getElementById('f-date').valueAsDate = new Date();
+fetchNextJobNo();
+fetchPublicConfig();
+
+async function submitJobCard() {
+  const jobNo = document.getElementById('f-jobno').value.trim();
+  const name = document.getElementById('f-name').value.trim();
+  const details = document.getElementById('f-details').value.trim();
+  const customerName = document.getElementById('f-customer-name').value.trim();
+  const driverName = document.getElementById('f-driver-name').value.trim();
+
+  const needsDisposalCert = getRadio('grp-needsdisposal');
+
+  if (!jobNo) { toast('Job number is missing — check server connection'); return; }
+  if (!name || !details || !customerName || !driverName) { toast('Please fill in all required (*) fields'); return; }
+  if (!sigPads.customer.hasContent()) { toast('Customer signature is required'); return; }
+  if (!sigPads.driver.hasContent()) { toast('Driver signature is required'); return; }
+  if (!needsDisposalCert) { toast('Please answer: Is this job card linked to a disposal site certificate?'); return; }
+
+  const payload = {
+    jobNo,
+    name, site: document.getElementById('f-site').value.trim(),
+    planon: document.getElementById('f-planon').value.trim(),
+    address: document.getElementById('f-address').value.trim(),
+    contact: document.getElementById('f-contact').value.trim(),
+    tel: document.getElementById('f-tel').value.trim(),
+    email: document.getElementById('f-email').value.trim(),
+    billing: document.getElementById('f-billing').value.trim(),
+    details,
+    jobType: getChecked('grp-jobtype'),
+    drainType: getChecked('grp-draintype'),
+    liquidWaste: getChecked('grp-liquidwaste'),
+    fattraps: getChecked('grp-fattraps'),
+    extTank: getChecked('grp-exttank'),
+    extTankSpecify: document.getElementById('f-exttank-specify').value.trim(),
+    consumables: {
+      degreaser: document.getElementById('c-degreaser').checked, degreaserL: document.getElementById('c-degreaser-l').value.trim(),
+      disinfectant: document.getElementById('c-disinfectant').checked, disinfectantL: document.getElementById('c-disinfectant-l').value.trim(),
+      acid: document.getElementById('c-acid').checked, acidL: document.getElementById('c-acid-l').value.trim(),
+      microbes: document.getElementById('c-microbes').checked, beads: document.getElementById('c-beads').checked
+    },
+    wasteStream: getChecked('grp-wastestream'),
+    wasteStreamOther: document.getElementById('f-wastestream-other').value.trim(),
+    wasteType: getChecked('grp-wastetype'),
+    quoteReq: document.getElementById('f-quote-req').value.trim(),
+    materials: getMaterials(),
+    photosBefore: pendingBefore,
+    photosAfter: pendingAfter,
+    customerName, customerSignature: sigPads.customer.dataURL(),
+    driverName, driverSignature: sigPads.driver.dataURL(),
+    needsDisposalCert: needsDisposalCert === 'yes',
+    comments: document.getElementById('f-comments').value.trim(),
+    rating: getRadio('grp-rating'),
+    date: document.getElementById('f-date').value,
+    timeIn1: document.getElementById('f-timein1').value, timeOut1: document.getElementById('f-timeout1').value,
+    timeIn2: document.getElementById('f-timein2').value, timeOut2: document.getElementById('f-timeout2').value,
+    submittedAt: new Date().toISOString()
+  };
+
+  const btn = document.getElementById('submit-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Sending...';
+
+  let ok = false, clientCopySent = false;
+  try {
+    const res = await fetch('/api/submit-jobcard', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+    });
+    ok = res.ok;
+    if (ok) { try { clientCopySent = !!(await res.json()).clientCopySent; } catch (e) {} }
+  } catch (e) { ok = false; }
+
+  history.push({
+    jobNo, name, driverName, date: payload.date, submittedAt: payload.submittedAt,
+    status: ok ? 'sent' : 'failed', payload,
+    needsDisposalCert: payload.needsDisposalCert,
+    disposalCertUploaded: false,
+    disposalCertData: null
+  });
+  saveHistory();
+
+  btn.disabled = false; btn.innerHTML = 'Complete Job Card';
+  showThankYou(ok, clientCopySent, !!payload.email);
+}
+
+function showThankYou(sentOk, clientCopySent, hadClientEmail) {
+  let statusMsg = sentOk
+    ? 'Sent to the office.'
+    : "Saved on this phone — couldn't send just now (no signal?), it'll retry from History.";
+  if (sentOk && hadClientEmail) {
+    statusMsg += clientCopySent ? ' A copy was also emailed to the client.' : ' (Client copy could not be sent — check their email address.)';
+  }
+  document.getElementById('thankyou-status').textContent = statusMsg;
+
+  const isPoor = getRadio('grp-rating') === 'Poor';
+  const link = document.getElementById('review-link');
+  const prompt = document.getElementById('review-prompt-text');
+  if (publicConfig.googleReviewUrl && !isPoor) {
+    link.href = publicConfig.googleReviewUrl;
+    link.style.display = 'block';
+    prompt.style.display = 'block';
+  } else {
+    link.style.display = 'none';
+    prompt.style.display = 'none';
+  }
+  document.getElementById('thankyou-overlay').style.display = 'flex';
+}
+function closeThankYou() {
+  document.getElementById('thankyou-overlay').style.display = 'none';
+  resetForm();
+}
+
+function resetForm() {
+  ['f-name','f-site','f-planon','f-address','f-contact','f-tel','f-email','f-billing','f-details',
+   'f-exttank-specify','c-degreaser-l','c-disinfectant-l','c-acid-l','f-wastestream-other','f-quote-req',
+   'f-customer-name','f-driver-name','f-comments',
+   'f-timein1','f-timeout1','f-timein2','f-timeout2'].forEach(id => document.getElementById(id).value = '');
+  document.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+  document.querySelectorAll('input[type="radio"]').forEach(r => r.checked = false);
+  document.getElementById('f-date').valueAsDate = new Date();
+  document.getElementById('mat-list').innerHTML = '';
+  pendingBefore = []; pendingAfter = [];
+  renderPhotos('before'); renderPhotos('after');
+  sigPads.customer.clear(); sigPads.driver.clear();
+  fetchNextJobNo();
+}
+
+// ---- History ----
+function renderTechFilterOptions() {
+  const sel = document.getElementById('filter-tech');
+  const current = sel.value;
+  const names = [...new Set(history.map(h => h.driverName).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  sel.innerHTML = '<option value="">All Technicians</option>' + names.map(n => `<option value="${escapeAttr(n)}">${escapeHtml(n)}</option>`).join('');
+  if (names.includes(current)) sel.value = current;
+}
+function clearHistoryFilters() {
+  document.getElementById('filter-date-from').value = '';
+  document.getElementById('filter-date-to').value = '';
+  document.getElementById('filter-tech').value = '';
+  renderHistory();
+}
+function renderHistory() {
+  renderTechFilterOptions();
+  const el = document.getElementById('history-list');
+  if (!history.length) { el.innerHTML = '<div class="empty">No job cards submitted yet.</div>'; return; }
+
+  const dateFrom = document.getElementById('filter-date-from').value;
+  const dateTo = document.getElementById('filter-date-to').value;
+  const tech = document.getElementById('filter-tech').value;
+
+  const withIdx = history.map((h, idx) => ({ h, idx }));
+  const filtered = withIdx.filter(({ h }) => {
+    if (dateFrom && h.date < dateFrom) return false;
+    if (dateTo && h.date > dateTo) return false;
+    if (tech && h.driverName !== tech) return false;
+    return true;
+  });
+
+  if (!filtered.length) { el.innerHTML = '<div class="empty">No job cards match these filters.</div>'; return; }
+
+  const sorted = [...filtered].reverse();
+  el.innerHTML = `
+    <div class="hist-table-wrap">
+      <table class="hist-table">
+        <thead>
+          <tr>
+            <th>Job No</th><th>Date</th><th>Technician</th><th>Client</th>
+            <th>Safe Disposal Req.</th><th>Status</th><th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${sorted.map(({ h, idx }) => {
+            const flagged = h.needsDisposalCert && !h.disposalCertUploaded;
+            let disposalCell = `<span class="tag ${h.needsDisposalCert ? 'tag-disposal-yes' : 'tag-disposal-no'}">${h.needsDisposalCert ? 'Yes' : 'No'}</span>`;
+            if (h.needsDisposalCert) disposalCell += h.disposalCertUploaded ? ' ✓' : ' ⏳';
+            return `
+            <tr class="${flagged ? 'flagged' : ''}">
+              <td>#${escapeHtml(h.jobNo)}</td>
+              <td>${escapeHtml(h.date)}</td>
+              <td>${escapeHtml(h.driverName)}</td>
+              <td>${escapeHtml(h.name)}</td>
+              <td>${disposalCell}</td>
+              <td><span class="tag ${h.status === 'sent' ? 'tag-sent' : 'tag-failed'}">${h.status === 'sent' ? 'Sent ✓' : 'Failed'}</span></td>
+              <td><div class="btn-cell">
+                ${h.status === 'failed' ? `<button class="btn btn-outline" onclick="resend(${idx})">Resend</button>` : ''}
+                ${flagged ? `<button class="btn btn-primary" style="background:#a8281c;" onclick="openDisposalModal(${idx})">Upload Certificate</button>` : ''}
+              </div></td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+async function resend(idx) {
+  const item = history[idx];
+  toast('Resending...');
+  try {
+    const res = await fetch('/api/submit-jobcard', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(item.payload)
+    });
+    item.status = res.ok ? 'sent' : 'failed';
+    saveHistory(); renderHistory();
+    toast(res.ok ? '✅ Resent successfully' : '⚠️ Still failed — check connection');
+  } catch (e) { toast('⚠️ Still failed — check connection'); }
+}
+
+// ---- Disposal certificate follow-up ----
+function openDisposalModal(idx) {
+  modalIdx = idx;
+  const item = history[idx];
+  document.getElementById('modal-jobno').textContent = item.jobNo;
+  document.getElementById('f-modal-disposal-name').value = '';
+  sigPads.disposal.clear();
+  pendingCertPhoto = null;
+  renderCertPhoto();
+  document.getElementById('disposal-modal').style.display = 'flex';
+  setTimeout(() => sigPads.disposal.resize(), 60);
+}
+function closeDisposalModal() {
+  document.getElementById('disposal-modal').style.display = 'none';
+  modalIdx = null;
+}
+function handleCertPhoto(e) {
+  const file = (e.target.files || [])[0];
+  if (!file) return;
+  resizeImage(file, 1400, 0.75).then(dataUrl => { pendingCertPhoto = dataUrl; renderCertPhoto(); });
+  e.target.value = '';
+}
+function renderCertPhoto() {
+  document.getElementById('photo-grid-cert').innerHTML = pendingCertPhoto
+    ? `<div class="photo-item"><img src="${pendingCertPhoto}"><button class="rm" onclick="pendingCertPhoto=null;renderCertPhoto()">✕</button></div>`
+    : '';
+}
+async function saveDisposalCert() {
+  if (modalIdx === null) return;
+  const item = history[modalIdx];
+  const disposalName = document.getElementById('f-modal-disposal-name').value.trim();
+  if (!disposalName) { toast('Disposal site name is required'); return; }
+  if (!sigPads.disposal.hasContent()) { toast('Disposal site signature is required'); return; }
+  if (!pendingCertPhoto) { toast('Please add a photo of the disposal certificate'); return; }
+
+  const certPayload = {
+    jobNo: item.jobNo, name: item.name, driverName: item.driverName, date: item.date,
+    disposalName, disposalSignature: sigPads.disposal.dataURL(), certificatePhoto: pendingCertPhoto
+  };
+
+  toast('Saving certificate...');
+  let ok = false;
+  try {
+    const res = await fetch('/api/submit-disposal-cert', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(certPayload)
+    });
+    ok = res.ok;
+  } catch (e) { ok = false; }
+
+  item.disposalCertUploaded = ok;
+  item.disposalCertData = ok ? certPayload : null;
+  saveHistory(); renderHistory();
+  if (ok) {
+    toast('✅ Certificate saved — job card no longer flagged');
+    closeDisposalModal();
+  } else {
+    toast('⚠️ Could not save — check connection and try again');
+  }
+}
+
+function escapeHtml(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+function escapeAttr(s) { return String(s || '').replace(/"/g, '&quot;'); }
+
+addMatRow();
+</script>
+</body>
+</html>
