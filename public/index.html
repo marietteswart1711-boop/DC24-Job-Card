@@ -166,11 +166,22 @@
 
     <div class="card">
       <div class="card-title">Pump Out Internal Fattraps</div>
-      <div class="chip-group" id="grp-fattraps"></div>
+      <div class="chip-with-amount" style="margin-bottom:8px;">
+        <label class="chip"><input type="checkbox" id="c-fattrap-50">50L</label>
+        <input type="text" id="c-fattrap-50-qty" placeholder="Qty">
+      </div>
+      <div class="chip-with-amount" style="margin-bottom:8px;">
+        <label class="chip"><input type="checkbox" id="c-fattrap-80">80L</label>
+        <input type="text" id="c-fattrap-80-qty" placeholder="Qty">
+      </div>
+      <div class="chip-with-amount" style="margin-bottom:8px;">
+        <label class="chip"><input type="checkbox" id="c-fattrap-100">100L</label>
+        <input type="text" id="c-fattrap-100-qty" placeholder="Qty">
+      </div>
     </div>
 
     <div class="card">
-      <div class="card-title">Pump External Tank</div>
+      <div class="card-title">Pump Out External Fat Trap / Tank</div>
       <div class="chip-group" id="grp-exttank" style="margin-bottom:10px;"></div>
       <div class="field"><label>Specify (if different)</label><input id="f-exttank-specify" placeholder="e.g. 4500L"></div>
     </div>
@@ -189,8 +200,11 @@
         <label class="chip"><input type="checkbox" id="c-acid">Acid</label>
         <input type="text" id="c-acid-l" placeholder="L">
       </div>
-      <div class="chip-group">
+      <div class="chip-with-amount" style="margin-bottom:8px;">
         <label class="chip"><input type="checkbox" id="c-microbes">Microbes</label>
+        <input type="text" id="c-microbes-l" placeholder="L">
+      </div>
+      <div class="chip-group">
         <label class="chip"><input type="checkbox" id="c-beads">Beads</label>
       </div>
     </div>
@@ -429,8 +443,7 @@ function renderChipGroup(groupId, options, type) {
 }
 renderChipGroup('grp-jobtype', ['Drain Cleaning','CCTV','Pipe Relining','Liquid Waste','Pipe Replacement','Sonde Location','Dye Test'], 'checkbox');
 renderChipGroup('grp-draintype', ['Stormwater','Sewerage','Fullbore/s','Manhole','Internal','Floor Drain'], 'checkbox');
-renderChipGroup('grp-liquidwaste', ['Internal','External','Manhole','Oil Interceptor'], 'checkbox');
-renderChipGroup('grp-fattraps', ['50L','80L','100L'], 'checkbox');
+renderChipGroup('grp-liquidwaste', ['Internal','External','Manhole','Oil Interceptor','Septic Tank'], 'checkbox');
 renderChipGroup('grp-exttank', ['200L','500L','1000L'], 'checkbox');
 renderChipGroup('grp-wastestream', ['Organic','Hazardous','Non Hazardous'], 'checkbox');
 renderChipGroup('grp-wastetype', ['Sewerage','F.O.G.s','Oily Water','Contaminated Water','Sludge'], 'checkbox');
@@ -564,14 +577,19 @@ async function submitJobCard() {
     jobType: getChecked('grp-jobtype'),
     drainType: getChecked('grp-draintype'),
     liquidWaste: getChecked('grp-liquidwaste'),
-    fattraps: getChecked('grp-fattraps'),
+    fattraps: {
+      l50: document.getElementById('c-fattrap-50').checked, l50Qty: document.getElementById('c-fattrap-50-qty').value.trim(),
+      l80: document.getElementById('c-fattrap-80').checked, l80Qty: document.getElementById('c-fattrap-80-qty').value.trim(),
+      l100: document.getElementById('c-fattrap-100').checked, l100Qty: document.getElementById('c-fattrap-100-qty').value.trim()
+    },
     extTank: getChecked('grp-exttank'),
     extTankSpecify: document.getElementById('f-exttank-specify').value.trim(),
     consumables: {
       degreaser: document.getElementById('c-degreaser').checked, degreaserL: document.getElementById('c-degreaser-l').value.trim(),
       disinfectant: document.getElementById('c-disinfectant').checked, disinfectantL: document.getElementById('c-disinfectant-l').value.trim(),
       acid: document.getElementById('c-acid').checked, acidL: document.getElementById('c-acid-l').value.trim(),
-      microbes: document.getElementById('c-microbes').checked, beads: document.getElementById('c-beads').checked
+      microbes: document.getElementById('c-microbes').checked, microbesL: document.getElementById('c-microbes-l').value.trim(),
+      beads: document.getElementById('c-beads').checked
     },
     wasteStream: getChecked('grp-wastestream'),
     wasteStreamOther: document.getElementById('f-wastestream-other').value.trim(),
@@ -646,7 +664,8 @@ function closeThankYou() {
 
 function resetForm() {
   ['f-name','f-site','f-planon','f-address','f-contact','f-tel','f-email','f-billing','f-details',
-   'f-exttank-specify','c-degreaser-l','c-disinfectant-l','c-acid-l','f-wastestream-other','f-quote-req',
+   'f-exttank-specify','c-degreaser-l','c-disinfectant-l','c-acid-l','c-microbes-l','f-wastestream-other','f-quote-req',
+   'c-fattrap-50-qty','c-fattrap-80-qty','c-fattrap-100-qty',
    'f-customer-name','f-driver-name','f-comments',
    'f-timein1','f-timeout1','f-timein2','f-timeout2'].forEach(id => document.getElementById(id).value = '');
   document.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
