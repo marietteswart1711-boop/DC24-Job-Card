@@ -1,27 +1,25 @@
-
-Server · PY
 #!/usr/bin/env python3
 """
 Job Card server — pure Python standard library, no pip installs needed.
- 
+
 Serves the job card form (public/index.html) and, when a technician submits
 a completed job card, composes an email (with the client's signature and any
 photos attached) and sends it via SMTP using the credentials in config.json
 (local use) or environment variables (hosted use — see README.md).
- 
+
 Setup (local):
     1. cp config.example.json config.json
     2. Edit config.json with your real SMTP details (see README.md)
     3. python3 server.py
     4. On a technician's phone (same wifi), open the "Network:" URL printed below
- 
+
 Setup (hosted, e.g. Render/Railway):
     Skip config.json entirely and set the same keys as environment variables
     in your hosting platform's dashboard instead — see the "Going live"
     section of README.md. Never commit config.json or share it — it contains
     your email password.
 """
- 
+
 import http.server
 import json
 import os
@@ -35,14 +33,14 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.image import MIMEImage
 from email.utils import formatdate
- 
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
 SEQUENCE_PATH = os.path.join(BASE_DIR, "sequence.json")
 PUBLIC_DIR = os.path.join(BASE_DIR, "public")
 _seq_lock = threading.Lock()
- 
- 
+
+
 # Every key config.json can hold can also be set as an environment variable
 # instead — environment variables always win if both are present. This is the
 # recommended approach when hosting on a platform like Render or Railway: you
@@ -54,8 +52,8 @@ ENV_KEYS = {
     "EMAIL_TO": str, "COMPANY_NAME": str, "SERVER_PORT": int, "START_JOBNO": int,
     "GOOGLE_REVIEW_URL": str,
 }
- 
- 
+
+
 def _cast_env(key, raw, kind):
     if kind is bool:
         return raw.strip().lower() in ("1", "true", "yes", "on")
@@ -69,19 +67,19 @@ def _cast_env(key, raw, kind):
                 f"your hosting platform's dashboard and fix that variable."
             )
     return raw
- 
- 
+
+
 def load_config():
     cfg = {}
     if os.path.exists(CONFIG_PATH):
         with open(CONFIG_PATH) as f:
             cfg = json.load(f)
- 
+
     for key, kind in ENV_KEYS.items():
         raw = os.environ.get(key)
         if raw is not None and raw != "":
             cfg[key] = _cast_env(key, raw, kind)
- 
+
     if not cfg:
         print("=" * 70)
         print("No config.json found and no config environment variables set.")
@@ -93,8 +91,8 @@ def load_config():
         print("=" * 70)
         return None
     return cfg
- 
- 
+
+
 def get_and_increment_jobno(cfg):
     """
     Reserves the next job number for a technician who just opened a new job card.
@@ -110,14 +108,14 @@ def get_and_increment_jobno(cfg):
         else:
             start = (cfg or {}).get("START_JOBNO", 1)
             data = {"next_number": start}
- 
+
         current = data["next_number"]
         data["next_number"] = current + 1
         with open(SEQUENCE_PATH, "w") as f:
             json.dump(data, f)
         return current
- 
- 
+
+
 def data_url_to_bytes(data_url):
     """Turns 'data:image/png;base64,AAAA...' into (mime_subtype, raw_bytes)."""
     m = re.match(r"^data:image/(\w+);base64,(.*)$", data_url, re.S)
@@ -127,26 +125,26 @@ def data_url_to_bytes(data_url):
     if subtype == "jpg":
         subtype = "jpeg"
     return subtype, base64.b64decode(b64)
- 
- 
+
+
 def row(label, value):
     if not value:
         return ""
     return (f"<tr><td style='padding:4px 8px;font-weight:bold;vertical-align:top;'>{escape(label)}</td>"
             f"<td style='padding:4px 8px;'>{escape(value)}</td></tr>")
- 
- 
+
+
 def checklist_line(label, items):
     if not items:
         return ""
     return (f"<p style='margin:4px 0;'><strong>{escape(label)}:</strong> "
             f"{escape(', '.join(items))}</p>")
- 
- 
+
+
 POOR_RATING_ALERT_RECIPIENT = "mariette@leakfind.co.za"
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
- 
- 
+
+
 def build_job_card_html(cfg, job):
     materials = job.get("materials") or []
     mat_rows = "".join(
@@ -154,7 +152,7 @@ def build_job_card_html(cfg, job):
         f"<td style='padding:4px 8px;border:1px solid #ddd;'>{escape(m.get('qty',''))}</td></tr>"
         for m in materials
     ) or "<tr><td colspan='2' style='padding:4px 8px;border:1px solid #ddd;color:#888;'>None recorded</td></tr>"
- 
+
     c = job.get("consumables") or {}
     consumable_bits = []
     if c.get("degreaser"): consumable_bits.append(f"Degreaser ({c.get('degreaserL','') or '?'} L)")
@@ -162,26 +160,26 @@ def build_job_card_html(cfg, job):
     if c.get("acid"): consumable_bits.append(f"Acid ({c.get('acidL','') or '?'} L)")
     if c.get("microbes"): consumable_bits.append("Microbes")
     if c.get("beads"): consumable_bits.append("Beads")
- 
+
     ext_tank = list(job.get("extTank") or [])
     if job.get("extTankSpecify"):
         ext_tank.append(f"Specify: {job['extTankSpecify']}")
- 
+
     waste_stream = list(job.get("wasteStream") or [])
     if job.get("wasteStreamOther"):
         waste_stream.append(f"Other: {job['wasteStreamOther']}")
- 
+
     time_bits = []
     if job.get("timeIn1") or job.get("timeOut1"):
         time_bits.append(f"Visit 1: {job.get('timeIn1','?')} - {job.get('timeOut1','?')}")
     if job.get("timeIn2") or job.get("timeOut2"):
         time_bits.append(f"Visit 2: {job.get('timeIn2','?')} - {job.get('timeOut2','?')}")
- 
+
     html = f"""
     <div style="font-family:Arial,sans-serif;font-size:14px;color:#222;max-width:640px;">
       <h2 style="color:#1a1a1a;margin-bottom:4px;">{escape(cfg.get('COMPANY_NAME','Job Card'))} — Job Card #{escape(job.get('jobNo',''))}</h2>
       <p style="color:#888;margin-top:0;">Submitted {escape(job.get('submittedAt',''))}</p>
- 
+
       <h3 style="margin-bottom:4px;">Customer Details</h3>
       <table style="border-collapse:collapse;margin-bottom:16px;">
         {row('Name', job.get('name'))}
@@ -193,10 +191,10 @@ def build_job_card_html(cfg, job):
         {row('Email', job.get('email'))}
         {row('Billing Information', job.get('billing'))}
       </table>
- 
+
       <h3 style="margin-bottom:4px;">Job Description</h3>
       <p style="white-space:pre-wrap;margin-top:4px;">{escape(job.get('details',''))}</p>
- 
+
       {checklist_line('Job Type', job.get('jobType'))}
       {checklist_line('Drain Type', job.get('drainType'))}
       {checklist_line('Liquid Waste', job.get('liquidWaste'))}
@@ -206,37 +204,37 @@ def build_job_card_html(cfg, job):
       {checklist_line('Waste Stream', waste_stream)}
       {checklist_line('Waste Type', job.get('wasteType'))}
       {checklist_line('Quote Requirements', [job['quoteReq']] if job.get('quoteReq') else [])}
- 
+
       <h3 style="margin-bottom:4px;margin-top:16px;">Materials / Parts Used</h3>
       <table style="border-collapse:collapse;margin-bottom:16px;">
         <tr><th style="padding:4px 8px;border:1px solid #ddd;background:#f2f2f2;text-align:left;">Material</th>
             <th style="padding:4px 8px;border:1px solid #ddd;background:#f2f2f2;text-align:left;">Qty</th></tr>
         {mat_rows}
       </table>
- 
+
       <h3 style="margin-bottom:4px;">Sign-Off</h3>
       <p style="margin:4px 0;">Customer: <strong>{escape(job.get('customerName',''))}</strong> (signature attached)</p>
       <p style="margin:4px 0;">Driver: <strong>{escape(job.get('driverName',''))}</strong> (signature attached)</p>
- 
+
       <h3 style="margin-bottom:4px;">Safe Disposal Certificate</h3>
       <p style="margin:4px 0;">{"⚠️ <strong>Linked to a disposal site certificate</strong> — technician will upload the certificate separately after dumping the load." if job.get('needsDisposalCert') else "Not linked to a disposal site certificate."}</p>
- 
+
       {f"<h3 style='margin-bottom:4px;'>Comments</h3><p style='white-space:pre-wrap;'>{escape(job.get('comments'))}</p>" if job.get('comments') else ""}
- 
+
       <table style="border-collapse:collapse;margin-top:8px;">
         {row('Service Rating', job.get('rating'))}
         {row('Date', job.get('date'))}
         {row('Time', ' | '.join(time_bits))}
       </table>
- 
+
       <p style="margin-top:16px;color:#888;font-size:12px;">
         Before/after photos and all signatures are attached to this email.
       </p>
     </div>
     """
     return html
- 
- 
+
+
 def attach_job_card_files(msg, job):
     # Signatures
     for label, key in [("signature_customer", "customerSignature"), ("signature_driver", "driverSignature")]:
@@ -247,7 +245,7 @@ def attach_job_card_files(msg, job):
                 img = MIMEImage(raw, _subtype=subtype)
                 img.add_header("Content-Disposition", "attachment", filename=f"{label}.{subtype}")
                 msg.attach(img)
- 
+
     # Before/after photos
     for group, key in [("before", "photosBefore"), ("after", "photosAfter")]:
         for i, photo in enumerate(job.get(key) or []):
@@ -256,28 +254,28 @@ def attach_job_card_files(msg, job):
                 img = MIMEImage(raw, _subtype=subtype)
                 img.add_header("Content-Disposition", "attachment", filename=f"photo_{group}_{i+1}.{subtype}")
                 msg.attach(img)
- 
- 
+
+
 def build_email(cfg, job):
     """The internal office copy — unchanged rating-based subject/recipient logic."""
     msg = MIMEMultipart()
     is_poor = (job.get("rating") or "").strip().lower() == "poor"
- 
+
     if is_poor:
         msg["Subject"] = "Poor rating DC24"
         recipients = [cfg["EMAIL_TO"], POOR_RATING_ALERT_RECIPIENT]
     else:
         msg["Subject"] = f"Job Card #{job.get('jobNo','')} - {job.get('name','')} - {job.get('date','')}"
         recipients = [cfg["EMAIL_TO"]]
- 
+
     msg["From"] = cfg["EMAIL_FROM"]
     msg["To"] = ", ".join(recipients)
     msg["Date"] = formatdate(localtime=True)
     msg.attach(MIMEText(build_job_card_html(cfg, job), "html"))
     attach_job_card_files(msg, job)
     return msg
- 
- 
+
+
 def build_client_copy_email(cfg, job):
     """
     A copy of the job card sent straight to the client's own email address, so
@@ -293,20 +291,20 @@ def build_client_copy_email(cfg, job):
     msg.attach(MIMEText(build_job_card_html(cfg, job), "html"))
     attach_job_card_files(msg, job)
     return msg
- 
- 
+
+
 def client_email_valid(job):
     email = (job.get("email") or "").strip()
     return bool(email) and bool(EMAIL_RE.match(email))
- 
- 
+
+
 def build_disposal_cert_email(cfg, cert):
     msg = MIMEMultipart()
     msg["Subject"] = f"Safe Disposal Certificate — Job Card #{cert.get('jobNo','')} - {cert.get('name','')}"
     msg["From"] = cfg["EMAIL_FROM"]
     msg["To"] = cfg["EMAIL_TO"]
     msg["Date"] = formatdate(localtime=True)
- 
+
     html = f"""
     <div style="font-family:Arial,sans-serif;font-size:14px;color:#222;max-width:640px;">
       <h2 style="color:#1a1a1a;margin-bottom:4px;">{escape(cfg.get('COMPANY_NAME','Job Card'))} — Safe Disposal Certificate for Job Card #{escape(cert.get('jobNo',''))}</h2>
@@ -325,7 +323,7 @@ def build_disposal_cert_email(cfg, cert):
     </div>
     """
     msg.attach(MIMEText(html, "html"))
- 
+
     sig = cert.get("disposalSignature")
     if sig:
         subtype, raw = data_url_to_bytes(sig)
@@ -333,7 +331,7 @@ def build_disposal_cert_email(cfg, cert):
             img = MIMEImage(raw, _subtype=subtype)
             img.add_header("Content-Disposition", "attachment", filename=f"signature_disposal.{subtype}")
             msg.attach(img)
- 
+
     photo = cert.get("certificatePhoto")
     if photo:
         subtype, raw = data_url_to_bytes(photo)
@@ -341,10 +339,10 @@ def build_disposal_cert_email(cfg, cert):
             img = MIMEImage(raw, _subtype=subtype)
             img.add_header("Content-Disposition", "attachment", filename=f"disposal_certificate.{subtype}")
             msg.attach(img)
- 
+
     return msg
- 
- 
+
+
 def escape(s):
     return (
         str(s)
@@ -352,19 +350,19 @@ def escape(s):
         .replace("<", "&lt;")
         .replace(">", "&gt;")
     )
- 
- 
+
+
 def send_smtp_message(cfg, msg):
     context = ssl.create_default_context()
     use_tls = cfg.get("SMTP_USE_TLS", True)
     use_ssl = cfg.get("SMTP_USE_SSL", False)  # implicit TLS, e.g. port 465
     skip_auth = cfg.get("SMTP_SKIP_AUTH", False)  # for local test relays with no login
- 
+
     smtp_cls = smtplib.SMTP_SSL if use_ssl else smtplib.SMTP
     kwargs = {"timeout": 20}
     if use_ssl:
         kwargs["context"] = context
- 
+
     with smtp_cls(cfg["SMTP_HOST"], cfg["SMTP_PORT"], **kwargs) as server:
         server.ehlo()
         if use_tls and not use_ssl:
@@ -373,24 +371,24 @@ def send_smtp_message(cfg, msg):
         if not skip_auth:
             server.login(cfg["SMTP_USER"], cfg["SMTP_PASSWORD"])
         server.send_message(msg)
- 
- 
+
+
 def send_email(cfg, job):
     send_smtp_message(cfg, build_email(cfg, job))
- 
- 
+
+
 def send_client_copy_email(cfg, job):
     send_smtp_message(cfg, build_client_copy_email(cfg, job))
- 
- 
+
+
 def send_disposal_cert_email(cfg, cert):
     send_smtp_message(cfg, build_disposal_cert_email(cfg, cert))
- 
- 
+
+
 class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         print(f"[{self.log_date_time_string()}] {fmt % args}")
- 
+
     def _send_json(self, code, obj):
         body = json.dumps(obj).encode()
         self.send_response(code)
@@ -398,7 +396,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
- 
+
     def do_GET(self):
         if self.path == "/" or self.path == "":
             path = os.path.join(PUBLIC_DIR, "index.html")
@@ -410,22 +408,22 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return
- 
+
         if self.path == "/api/public-config":
             cfg = load_config() or {}
             return self._send_json(200, {
                 "googleReviewUrl": cfg.get("GOOGLE_REVIEW_URL", ""),
                 "companyName": cfg.get("COMPANY_NAME", "")
             })
- 
+
         if self.path == "/api/next-jobno":
             cfg = load_config()
             jobno = get_and_increment_jobno(cfg)
             return self._send_json(200, {"jobNo": jobno})
- 
+
         self.send_response(404)
         self.end_headers()
- 
+
     def do_POST(self):
         if self.path == "/api/submit-jobcard":
             length = int(self.headers.get("Content-Length", 0))
@@ -434,11 +432,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 job = json.loads(raw)
             except json.JSONDecodeError:
                 return self._send_json(400, {"error": "bad json"})
- 
+
             cfg = load_config()
             if cfg is None:
                 return self._send_json(500, {"error": "server not configured — see config.json"})
- 
+
             try:
                 send_email(cfg, job)
                 is_poor = (job.get("rating") or "").strip().lower() == "poor"
@@ -448,7 +446,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             except Exception as e:
                 print(f"FAILED to send job card #{job.get('jobNo')}: {e}")
                 return self._send_json(500, {"error": str(e)})
- 
+
             # Client copy is best-effort — a bad/missing email or a hiccup here
             # shouldn't undo the fact that the office copy above already sent.
             client_copy_sent = False
@@ -459,9 +457,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     print(f"Sent client copy of job card #{job.get('jobNo')} to {job.get('email')}")
                 except Exception as e:
                     print(f"FAILED to send client copy of job card #{job.get('jobNo')} to {job.get('email')}: {e}")
- 
+
             return self._send_json(200, {"ok": True, "clientCopySent": client_copy_sent})
- 
+
         if self.path == "/api/submit-disposal-cert":
             length = int(self.headers.get("Content-Length", 0))
             raw = self.rfile.read(length)
@@ -469,11 +467,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 cert = json.loads(raw)
             except json.JSONDecodeError:
                 return self._send_json(400, {"error": "bad json"})
- 
+
             cfg = load_config()
             if cfg is None:
                 return self._send_json(500, {"error": "server not configured — see config.json"})
- 
+
             try:
                 send_disposal_cert_email(cfg, cert)
                 print(f"Sent disposal certificate for job card #{cert.get('jobNo')} to {cfg['EMAIL_TO']}")
@@ -481,11 +479,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
             except Exception as e:
                 print(f"FAILED to send disposal certificate for job card #{cert.get('jobNo')}: {e}")
                 return self._send_json(500, {"error": str(e)})
- 
+
         self.send_response(404)
         self.end_headers()
- 
- 
+
+
 def local_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
@@ -495,8 +493,8 @@ def local_ip():
         return "127.0.0.1"
     finally:
         s.close()
- 
- 
+
+
 if __name__ == "__main__":
     cfg = load_config()
     # Render/Railway/Heroku-style platforms inject a PORT env var and expect
@@ -510,4 +508,3 @@ if __name__ == "__main__":
         print("  ⚠️  Running WITHOUT email config — form will load but sending will fail.")
     server = http.server.ThreadingHTTPServer(("0.0.0.0", port), Handler)
     server.serve_forever()
- 
