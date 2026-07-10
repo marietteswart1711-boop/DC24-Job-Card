@@ -158,8 +158,14 @@ def build_job_card_html(cfg, job):
     if c.get("degreaser"): consumable_bits.append(f"Degreaser ({c.get('degreaserL','') or '?'} L)")
     if c.get("disinfectant"): consumable_bits.append(f"Disinfectant ({c.get('disinfectantL','') or '?'} L)")
     if c.get("acid"): consumable_bits.append(f"Acid ({c.get('acidL','') or '?'} L)")
-    if c.get("microbes"): consumable_bits.append("Microbes")
+    if c.get("microbes"): consumable_bits.append(f"Microbes ({c.get('microbesL','') or '?'} L)")
     if c.get("beads"): consumable_bits.append("Beads")
+
+    f = job.get("fattraps") or {}
+    fattrap_bits = []
+    if f.get("l50"): fattrap_bits.append(f"50L x {f.get('l50Qty','') or '?'}")
+    if f.get("l80"): fattrap_bits.append(f"80L x {f.get('l80Qty','') or '?'}")
+    if f.get("l100"): fattrap_bits.append(f"100L x {f.get('l100Qty','') or '?'}")
 
     ext_tank = list(job.get("extTank") or [])
     if job.get("extTankSpecify"):
@@ -198,8 +204,8 @@ def build_job_card_html(cfg, job):
       {checklist_line('Job Type', job.get('jobType'))}
       {checklist_line('Drain Type', job.get('drainType'))}
       {checklist_line('Liquid Waste', job.get('liquidWaste'))}
-      {checklist_line('Pump Out Internal Fattraps', job.get('fattraps'))}
-      {checklist_line('Pump External Tank', ext_tank)}
+      {checklist_line('Pump Out Internal Fattraps', fattrap_bits)}
+      {checklist_line('Pump Out External Fat Trap / Tank', ext_tank)}
       {checklist_line('Consumables', consumable_bits)}
       {checklist_line('Waste Stream', waste_stream)}
       {checklist_line('Waste Type', job.get('wasteType'))}
