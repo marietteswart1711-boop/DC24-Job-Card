@@ -70,6 +70,11 @@
   table.hist-table tr:last-child td { border-bottom:none; }
   table.hist-table .btn-cell { display:flex; gap:6px; }
   table.hist-table .btn-cell button { font-size:11px; padding:6px 8px; width:auto; }
+  table.hist-table th:last-child, table.hist-table td:last-child {
+    position:sticky; right:0; background:#fff; box-shadow:-4px 0 6px -4px rgba(0,0,0,0.15);
+  }
+  table.hist-table tr.flagged td:last-child { background:#fdecea; }
+  .scroll-hint { font-size:11px; color:#999; margin:-6px 0 10px; }
   .tag { display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:700; }
   .tag-sent { background:#d9f2e6; color:#1a7a4c; }
   .tag-failed { background:#fbe1e1; color:#c0392b; }
@@ -289,12 +294,14 @@
     <div class="card">
       <div class="card-title">Submitted Job Cards (this device)</div>
       <div class="filter-bar">
+        <div class="field"><label>Job No.</label><input type="text" id="filter-jobno" placeholder="e.g. 37103" inputmode="numeric" oninput="renderHistory()"></div>
         <div class="field"><label>Date From</label><input type="date" id="filter-date-from" onchange="renderHistory()"></div>
         <div class="field"><label>Date To</label><input type="date" id="filter-date-to" onchange="renderHistory()"></div>
         <div class="field"><label>Technician</label><select id="filter-tech" onchange="renderHistory()"><option value="">All Technicians</option></select></div>
         <button class="btn btn-outline" onclick="clearHistoryFilters()">Clear Filters</button>
       </div>
       <div id="history-list"><div class="empty">No job cards submitted yet.</div></div>
+      <div class="scroll-hint" id="hist-scroll-hint" style="display:none;">← Swipe the table sideways to see the Actions column →</div>
     </div>
   </div>
 
@@ -478,11 +485,23 @@ function makeSigPad(name) {
   const canvas = document.getElementById('sig-' + name);
   const ctx = canvas.getContext('2d');
   let drawing = false, hasContent = false;
+  let lastW = 0, lastH = 0;
 
   function resize() {
     const ratio = window.devicePixelRatio || 1;
     const rect = canvas.getBoundingClientRect();
+    // Hidden (e.g. disposal pad while its modal is closed) — nothing to size yet.
+    if (rect.width === 0 || rect.height === 0) return;
+    // Same size as last time — skip. Without this guard, every window "resize"
+    // event (which mobile browsers fire constantly, e.g. when the on-screen
+    // keyboard opens/closes while typing elsewhere in the form) would re-run
+    // this, wiping out whatever signature was already drawn and compounding
+    // the canvas scale transform each time — which is exactly why signatures
+    // were breaking/disappearing after tapping into another field.
+    if (rect.width === lastW && rect.height === lastH) return;
+    lastW = rect.width; lastH = rect.height;
     canvas.width = rect.width * ratio; canvas.height = rect.height * ratio;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.scale(ratio, ratio);
     ctx.lineWidth = 2.2; ctx.lineCap = 'round'; ctx.strokeStyle = '#1a1a1a';
   }
@@ -649,6 +668,7 @@ function renderTechFilterOptions() {
   if (names.includes(current)) sel.value = current;
 }
 function clearHistoryFilters() {
+  document.getElementById('filter-jobno').value = '';
   document.getElementById('filter-date-from').value = '';
   document.getElementById('filter-date-to').value = '';
   document.getElementById('filter-tech').value = '';
@@ -657,21 +677,24 @@ function clearHistoryFilters() {
 function renderHistory() {
   renderTechFilterOptions();
   const el = document.getElementById('history-list');
-  if (!history.length) { el.innerHTML = '<div class="empty">No job cards submitted yet.</div>'; return; }
+  const hint = document.getElementById('hist-scroll-hint');
+  if (!history.length) { el.innerHTML = '<div class="empty">No job cards submitted yet.</div>'; hint.style.display = 'none'; return; }
 
+  const jobnoQuery = document.getElementById('filter-jobno').value.trim();
   const dateFrom = document.getElementById('filter-date-from').value;
   const dateTo = document.getElementById('filter-date-to').value;
   const tech = document.getElementById('filter-tech').value;
 
   const withIdx = history.map((h, idx) => ({ h, idx }));
   const filtered = withIdx.filter(({ h }) => {
+    if (jobnoQuery && !String(h.jobNo).includes(jobnoQuery)) return false;
     if (dateFrom && h.date < dateFrom) return false;
     if (dateTo && h.date > dateTo) return false;
     if (tech && h.driverName !== tech) return false;
     return true;
   });
 
-  if (!filtered.length) { el.innerHTML = '<div class="empty">No job cards match these filters.</div>'; return; }
+  if (!filtered.length) { el.innerHTML = '<div class="empty">No job cards match these filters.</div>'; hint.style.display = 'none'; return; }
 
   const sorted = [...filtered].reverse();
   el.innerHTML = `
@@ -705,6 +728,9 @@ function renderHistory() {
         </tbody>
       </table>
     </div>`;
+
+  const wrap = el.querySelector('.hist-table-wrap');
+  hint.style.display = (wrap && wrap.scrollWidth > wrap.clientWidth) ? 'block' : 'none';
 }
 async function resend(idx) {
   const item = history[idx];
