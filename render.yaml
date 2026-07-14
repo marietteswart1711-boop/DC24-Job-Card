@@ -24,7 +24,5 @@ services:
         sync: false
       - key: COMPANY_NAME
         sync: false
-      - key: START_JOBNO
-        sync: false
       - key: GOOGLE_REVIEW_URL
         sync: false
