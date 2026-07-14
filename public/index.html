@@ -122,9 +122,9 @@
     <div class="card">
       <div class="card-title">Job Number</div>
       <div class="field">
-        <label>Job No. (auto-assigned)</label>
-        <input id="f-jobno" readonly placeholder="…">
-        <div class="hint" id="jobno-hint">Fetching next job number from server…</div>
+        <label>Job No. <span class="req">*</span></label>
+        <input id="f-jobno" inputmode="numeric" placeholder="Enter job number" oninput="updateJobNoBadge()">
+        <div class="hint" id="jobno-hint">Enter the job number from your paper book / sequence — this is not assigned automatically.</div>
       </div>
     </div>
 
@@ -364,8 +364,6 @@ let pendingBefore = [], pendingAfter = [];
 let pendingCertPhoto = null;
 let modalIdx = null;
 let matCount = 0;
-let currentJobNo = null;
-let jobNoIsAuto = false;
 let publicConfig = { googleReviewUrl: '', companyName: '' };
 
 async function fetchPublicConfig() {
@@ -393,27 +391,10 @@ function switchTab(name, btn) {
   if (name === 'history') renderHistory();
 }
 
-// ---- Auto job number ----
-async function fetchNextJobNo() {
-  document.getElementById('jobno-hint').textContent = 'Fetching next job number from server…';
-  document.getElementById('jobno-display').textContent = '…';
-  try {
-    const res = await fetch('/api/next-jobno');
-    if (!res.ok) throw new Error('bad response');
-    const data = await res.json();
-    currentJobNo = String(data.jobNo);
-    jobNoIsAuto = true;
-    const el = document.getElementById('f-jobno');
-    el.value = currentJobNo; el.readOnly = true;
-    document.getElementById('jobno-display').textContent = currentJobNo;
-    document.getElementById('jobno-hint').textContent = 'Assigned automatically. Next card will show the following number.';
-  } catch (e) {
-    jobNoIsAuto = false;
-    const el = document.getElementById('f-jobno');
-    el.value = ''; el.readOnly = false; el.placeholder = 'No signal — enter manually';
-    document.getElementById('jobno-display').textContent = '—';
-    document.getElementById('jobno-hint').textContent = '⚠️ Could not reach server — enter the job number manually and confirm with the office.';
-  }
+// ---- Manual job number ----
+function updateJobNoBadge() {
+  const val = document.getElementById('f-jobno').value.trim();
+  document.getElementById('jobno-display').textContent = val || '…';
 }
 
 // ---- Materials ----
@@ -546,7 +527,6 @@ function clearSig(name) { sigPads[name].clear(); }
 
 // ---- Submit ----
 document.getElementById('f-date').valueAsDate = new Date();
-fetchNextJobNo();
 fetchPublicConfig();
 
 async function submitJobCard() {
@@ -558,7 +538,7 @@ async function submitJobCard() {
 
   const needsDisposalCert = getRadio('grp-needsdisposal');
 
-  if (!jobNo) { toast('Job number is missing — check server connection'); return; }
+  if (!jobNo) { toast('Please enter the job number'); return; }
   if (!name || !details || !customerName || !driverName) { toast('Please fill in all required (*) fields'); return; }
   if (!sigPads.customer.hasContent()) { toast('Customer signature is required'); return; }
   if (!sigPads.driver.hasContent()) { toast('Driver signature is required'); return; }
@@ -663,7 +643,7 @@ function closeThankYou() {
 }
 
 function resetForm() {
-  ['f-name','f-site','f-planon','f-address','f-contact','f-tel','f-email','f-billing','f-details',
+  ['f-jobno','f-name','f-site','f-planon','f-address','f-contact','f-tel','f-email','f-billing','f-details',
    'f-exttank-specify','c-degreaser-l','c-disinfectant-l','c-acid-l','c-microbes-l','f-wastestream-other','f-quote-req',
    'c-fattrap-50-qty','c-fattrap-80-qty','c-fattrap-100-qty',
    'f-customer-name','f-driver-name','f-comments',
@@ -675,7 +655,7 @@ function resetForm() {
   pendingBefore = []; pendingAfter = [];
   renderPhotos('before'); renderPhotos('after');
   sigPads.customer.clear(); sigPads.driver.clear();
-  fetchNextJobNo();
+  updateJobNoBadge();
 }
 
 // ---- History ----
