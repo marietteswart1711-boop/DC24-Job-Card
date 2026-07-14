@@ -7,6 +7,9 @@ a completed job card, composes an email (with the client's signature and any
 photos attached) and sends it via SMTP using the credentials in config.json
 (local use) or environment variables (hosted use — see README.md).
 
+Job numbers are entered manually by the technician on the form — this server
+does not assign or track a job number sequence.
+
 Setup (local):
     1. cp config.example.json config.json
     2. Edit config.json with your real SMTP details (see README.md)
@@ -27,8 +30,6 @@ import re
 import smtplib
 import ssl
 import base64
-import socket
-import threading
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.image import MIMEImage
@@ -36,9 +37,7 @@ from email.utils import formatdate
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
-SEQUENCE_PATH = os.path.join(BASE_DIR, "sequence.json")
 PUBLIC_DIR = os.path.join(BASE_DIR, "public")
-_seq_lock = threading.Lock()
 
 
 # Every key config.json can hold can also be set as an environment variable
@@ -49,7 +48,7 @@ _seq_lock = threading.Lock()
 ENV_KEYS = {
     "SMTP_HOST": str, "SMTP_PORT": int, "SMTP_USE_TLS": bool, "SMTP_USE_SSL": bool,
     "SMTP_SKIP_AUTH": bool, "SMTP_USER": str, "SMTP_PASSWORD": str, "EMAIL_FROM": str,
-    "EMAIL_TO": str, "COMPANY_NAME": str, "SERVER_PORT": int, "START_JOBNO": int,
+    "EMAIL_TO": str, "COMPANY_NAME": str, "SERVER_PORT": int,
     "GOOGLE_REVIEW_URL": str,
 }
 
@@ -91,29 +90,6 @@ def load_config():
         print("=" * 70)
         return None
     return cfg
-
-
-def get_and_increment_jobno(cfg):
-    """
-    Reserves the next job number for a technician who just opened a new job card.
-    Persisted to sequence.json so the count survives restarts and stays consistent
-    across every technician's phone (they all hit the same server).
-    Thread-locked so two technicians opening a new card in the same instant can't
-    both get handed the same number.
-    """
-    with _seq_lock:
-        if os.path.exists(SEQUENCE_PATH):
-            with open(SEQUENCE_PATH) as f:
-                data = json.load(f)
-        else:
-            start = (cfg or {}).get("START_JOBNO", 1)
-            data = {"next_number": start}
-
-        current = data["next_number"]
-        data["next_number"] = current + 1
-        with open(SEQUENCE_PATH, "w") as f:
-            json.dump(data, f)
-        return current
 
 
 def data_url_to_bytes(data_url):
@@ -422,11 +398,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 "companyName": cfg.get("COMPANY_NAME", "")
             })
 
-        if self.path == "/api/next-jobno":
-            cfg = load_config()
-            jobno = get_and_increment_jobno(cfg)
-            return self._send_json(200, {"jobNo": jobno})
-
         self.send_response(404)
         self.end_headers()
 
@@ -491,6 +462,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 
 def local_ip():
+    import socket
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         s.connect(("8.8.8.8", 80))
