@@ -1,3 +1,4 @@
+[dc24_README.md](https://github.com/user-attachments/files/29996312/dc24_README.md)
 # DC24 Job Card App
 
 A phone-friendly job card matching your existing DC24 paper job card/safe disposal certificate:
@@ -7,41 +8,23 @@ the completed job card is emailed to your office automatically — no manual ste
 ## What's included
 
 - `public/index.html` — the job card form technicians use (works in any phone browser), laid out
-  to match the paper DC24 job card: customer details, Planon number, job description, Job Type /
-  Drain Type / Liquid Waste / Pump Out / Consumables / Waste Stream / Waste Type checklists, quote
-  requirements, before & after photos, Customer and Driver sign-off, a Yes/No safe disposal
-  certificate question, comments, service rating, and date/time in-out (with a second visit slot)
-- `server.py` — a small Python server that receives submitted job cards, assigns the next job
-  number, and emails everything via your real SMTP account (Gmail, Outlook/365, or your existing
-  business mail server)
-- `config.example.json` — template for your SMTP settings and starting job number
-- `sequence.json` — created automatically the first time the app is used; tracks the next job
-  number so it survives server restarts
+  to match the paper DC24 job card: job number, customer details, Planon number, job description,
+  Job Type / Drain Type / Liquid Waste / Pump Out / Consumables / Waste Stream / Waste Type
+  checklists, quote requirements, before & after photos, Customer and Driver sign-off, a Yes/No
+  safe disposal certificate question, comments, service rating, and date/time in-out (with a
+  second visit slot)
+- `server.py` — a small Python server that receives submitted job cards and emails everything via
+  your real SMTP account (Gmail, Outlook/365, or your existing business mail server)
+- `config.example.json` — template for your SMTP settings
 
 No external packages are required — everything runs on Python's standard library.
 
-## Automatic job numbering
+## Job numbers
 
-Every technician's phone talks to the same server, so job numbers stay in one true sequence no
-matter who's filling out a card or how many are open at once. The moment a technician opens a new,
-blank job card, the app asks the server for the next number and reserves it immediately — that's
-why the badge at the top of the screen shows a number right away rather than a blank field. As soon
-as that card is submitted, the very next job card anyone opens (on any phone) will show the
-following number.
-
-**Setting your real starting number:** you mentioned you'll provide the number to start from when
-ready. When you have it:
-
-1. Stop the server if it's running.
-2. Delete `sequence.json` if one already exists (it may have been created during testing).
-3. Set `"START_JOBNO"` in `config.json` to your real starting number (e.g. `37103`, matching where
-   your paper books left off).
-4. Restart `python3 server.py` — the first job card opened will show that exact number, and it'll
-   count up from there.
-
-If `sequence.json` already exists, the value in `config.json`'s `START_JOBNO` is ignored (the
-server trusts the persisted sequence over the config default) — so deleting it is the key step
-when you want to reset the starting point.
+Job numbers are entered manually by the technician on the form, matching the number from your
+paper book/sequence. The server does not assign, track, or reserve job numbers — the technician
+types the job number directly into the "Job No." field before completing the card, and it's
+included as-is in the emailed job card.
 
 ## Setup (5-10 minutes)
 
@@ -98,20 +81,21 @@ outside your office network — see "Going live" below.
 
 ## Using the app
 
-1. Technician fills in job details, description of work, and any materials used.
-2. Optional: attach before/after photos from the phone camera.
-3. Client and driver sign directly on the phone screen.
-4. Technician answers **"Is this job card linked to a disposal site certificate?"** (Yes/No).
-5. Tap **Complete Job Card** — the email sends immediately in the background to
+1. Technician enters the job number for this job card.
+2. Technician fills in job details, description of work, and any materials used.
+3. Optional: attach before/after photos from the phone camera.
+4. Client and driver sign directly on the phone screen.
+5. Technician answers **"Is this job card linked to a disposal site certificate?"** (Yes/No).
+6. Tap **Complete Job Card** — the email sends immediately in the background to
    `info@drainclean24.co.za` (or whatever `EMAIL_TO` is set to). If the customer's email address
    was filled in and looks valid, they automatically get their own copy too (subject "Your Job
    Card #...") — sent in addition to, never instead of, the office copy. A missing or badly
    typed client email just skips that copy quietly; it never blocks the job card itself from
    going through.
-6. A thank-you screen appears with a **⭐ Rate DC24 on Google** button — handy to hand the phone to
+7. A thank-you screen appears with a **⭐ Rate DC24 on Google** button — handy to hand the phone to
    the client right there on site while the job is fresh. Tapping **Start Next Job Card** dismisses
-   it and loads the next job number.
-7. If there's no signal at the moment of submission, the job card is saved in the phone's local
+   it and clears the form, ready for the next job number to be entered.
+8. If there's no signal at the moment of submission, the job card is saved in the phone's local
    **History** tab with a "Failed" tag and a **Resend** button, so nothing is lost — just resend
    once back in signal range. The thank-you/review screen still appears either way, since the job
    itself is done regardless of whether the email sent immediately.
@@ -163,7 +147,7 @@ as an environment variable in the hosting platform's own dashboard.** This is th
 to host it — you never need to commit `config.json` or any password to a repository at all. The
 environment variable names are exactly the same as the keys in `config.example.json`
 (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USE_TLS`, `SMTP_USE_SSL`, `SMTP_USER`, `SMTP_PASSWORD`,
-`EMAIL_FROM`, `EMAIL_TO`, `COMPANY_NAME`, `START_JOBNO`, `GOOGLE_REVIEW_URL`).
+`EMAIL_FROM`, `EMAIL_TO`, `COMPANY_NAME`, `GOOGLE_REVIEW_URL`).
 
 ### Deploying to Render (recommended)
 
@@ -181,12 +165,9 @@ environment variable names are exactly the same as the keys in `config.example.j
 A `render.yaml` file is included in this project so Render can pick up steps 3-4 automatically as
 a "Blueprint" if you use that option instead of the manual New Web Service flow.
 
-**Two things to know about Render's free tier:** a free service "spins down" after periods of no
+**One thing to know about Render's free tier:** a free service "spins down" after periods of no
 traffic and takes up to a minute to wake up on the next request — the technician just needs to
-wait for the page to load on the first open of the day. Also, the free tier's disk is temporary —
-if the service restarts, `sequence.json` (which tracks the next job number) resets. If job numbers
-matter to you precisely, either upgrade to a paid instance with a persistent disk, or set
-`START_JOBNO` again after any long gap in use.
+wait for the page to load on the first open of the day.
 
 ### Deploying to Railway (alternative)
 
@@ -194,7 +175,7 @@ Much the same idea: create a project at [railway.app](https://railway.app), conn
 run `railway up` from this folder with Railway's CLI), set the same environment variables under
 the project's **Variables** tab, and Railway will detect the included `Procfile`
 (`web: python3 server.py`) automatically. Railway also assigns a public URL once deployed. The
-same free-tier caveats about sleep/wake and disk persistence generally apply.
+same free-tier caveats about sleep/wake generally apply.
 
 ### Other options
 
@@ -214,8 +195,8 @@ and photo attachments all arrived correctly formatted.
 
 ## Fields captured on each job card
 
-- Job No. (auto-assigned), Planon Number, customer name, site, address, contact person, telephone,
-  email, billing information
+- Job No. (entered manually by the technician), Planon Number, customer name, site, address,
+  contact person, telephone, email, billing information
 - Job Description details
 - Job Type, Drain Type, Liquid Waste, Pump Out Internal Fattraps, Pump External Tank (+ specify),
   Consumables (Degreaser/Disinfectant/Acid with litres, Microbes, Beads), Waste Stream (+ other),
@@ -238,6 +219,9 @@ and photo attachments all arrived correctly formatted.
 - There's no login/authentication on the form itself — anyone with the link can submit a job card.
   If that matters, ask your developer to add a simple shared PIN or per-technician login before
   going live company-wide.
+- There's no validation that a job number hasn't already been used or is in the right sequence —
+  since it's entered manually, it's on the technician to enter the correct number from your paper
+  book/sequence.
 - Local job card history lives only on that one phone's browser storage — it's a personal
   "did this send OK" log, not a shared company database. The email itself is the permanent record.
 - Very large photo sets could make an email slow to send on a poor mobile connection — photos are
