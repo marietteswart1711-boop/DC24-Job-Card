@@ -37,6 +37,7 @@ import base64
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.image import MIMEImage
+from email.mime.application import MIMEApplication
 from email.utils import formatdate
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -110,6 +111,18 @@ def data_url_to_bytes(data_url):
     return subtype, base64.b64decode(b64)
 
 
+def parse_data_url(data_url):
+    """
+    Turns 'data:<mime type>;base64,<data>' into (mime_type, raw_bytes) for any
+    mime type — unlike data_url_to_bytes above, which only understands
+    data:image/... URLs. Used for the disposal certificate PDF upload.
+    """
+    m = re.match(r"^data:([\w./+-]+);base64,(.*)$", data_url, re.S)
+    if not m:
+        return "application/octet-stream", b""
+    return m.group(1), base64.b64decode(m.group(2))
+
+
 def row(label, value):
     if not value:
         return ""
@@ -170,7 +183,8 @@ def build_job_card_html(cfg, job):
 
       <h2 style="color:#1a1a1a;margin-bottom:4px;">{escape(cfg.get('COMPANY_NAME','Job Card'))} — Job Card #{escape(job.get('jobNo',''))}</h2>
       <p style="color:#888;margin-top:0;">Submitted {escape(job.get('submittedAt',''))}</p>
-      {f"<p style='margin:2px 0 12px;'><strong>Vehicle:</strong> {escape(job.get('vehicle'))}</p>" if job.get('vehicle') else ""}
+      {f"<p style='margin:2px 0 4px;'><strong>Vehicle:</strong> {escape(job.get('vehicle'))}</p>" if job.get('vehicle') else ""}
+      {f"<p style='margin:2px 0 12px;'><strong>Dumping Site:</strong> {escape(job.get('dumpSite'))}</p>" if job.get('dumpSite') else ""}
 
       <h3 style="margin-bottom:4px;">Customer Details</h3>
       <table style="border-collapse:collapse;margin-bottom:16px;">
@@ -334,7 +348,7 @@ def build_disposal_cert_email(cfg, cert):
         {row('Disposal Site', cert.get('disposalName'))}
       </table>
       <p style="margin-top:16px;color:#888;font-size:12px;">
-        The disposal site signature and a photo of the physical certificate handed to the
+        The disposal site signature and a PDF of the physical certificate handed to the
         technician are attached to this email.
       </p>
     </div>
@@ -349,13 +363,22 @@ def build_disposal_cert_email(cfg, cert):
             img.add_header("Content-Disposition", "attachment", filename=f"signature_disposal.{subtype}")
             msg.attach(img)
 
-    photo = cert.get("certificatePhoto")
-    if photo:
-        subtype, raw = data_url_to_bytes(photo)
+    # The certificate upload is a PDF (not a photo) — attached as a proper PDF
+    # part rather than an image. Kept tolerant of an old image data URL too,
+    # in case an in-flight submission from before this change still has one.
+    cert_file = cert.get("certificatePhoto")
+    if cert_file:
+        mime, raw = parse_data_url(cert_file)
         if raw:
-            img = MIMEImage(raw, _subtype=subtype)
-            img.add_header("Content-Disposition", "attachment", filename=f"disposal_certificate.{subtype}")
-            msg.attach(img)
+            if mime == "application/pdf":
+                part = MIMEApplication(raw, _subtype="pdf")
+                part.add_header("Content-Disposition", "attachment", filename="disposal_certificate.pdf")
+                msg.attach(part)
+            elif mime.startswith("image/"):
+                subtype = mime.split("/", 1)[1]
+                img = MIMEImage(raw, _subtype=subtype)
+                img.add_header("Content-Disposition", "attachment", filename=f"disposal_certificate.{subtype}")
+                msg.attach(img)
 
     return msg
 
