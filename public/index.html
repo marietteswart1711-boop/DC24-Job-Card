@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>DC24 Job Card</title>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <style>
   * { box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
   body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#f2f5f8; color:#222; padding-bottom:40px; }
@@ -125,6 +126,26 @@
         <label>Job No. <span class="req">*</span></label>
         <input id="f-jobno" inputmode="numeric" placeholder="Enter job number" oninput="updateJobNoBadge()">
         <div class="hint" id="jobno-hint">Enter the job number from your paper book / sequence — this is not assigned automatically.</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Vehicle</div>
+      <div class="field">
+        <label>Vehicle</label>
+        <select id="f-vehicle" onchange="updateVehicleOther()">
+          <option value="Gigantor LW11">Gigantor LW11</option>
+          <option value="Big Foot LW10">Big Foot LW10</option>
+          <option value="Isuzu LW9">Isuzu LW9</option>
+          <option value="Biggie Smalls">Biggie Smalls</option>
+          <option value="Dyna LW8">Dyna LW8</option>
+          <option value="DYNA 2.0">DYNA 2.0</option>
+          <option value="OTHER">OTHER</option>
+        </select>
+      </div>
+      <div class="field" id="f-vehicle-other-wrap" style="display:none;">
+        <label>Specify Vehicle</label>
+        <input id="f-vehicle-other" placeholder="Type vehicle name">
       </div>
     </div>
 
@@ -313,6 +334,7 @@
         <div class="field"><label>Date To</label><input type="date" id="filter-date-to" onchange="renderHistory()"></div>
         <div class="field"><label>Technician</label><select id="filter-tech" onchange="renderHistory()"><option value="">All Technicians</option></select></div>
         <button class="btn btn-outline" onclick="clearHistoryFilters()">Clear Filters</button>
+        <button class="btn btn-outline" onclick="exportHistoryToExcel()">⬇ Download to Excel</button>
       </div>
       <div id="history-list"><div class="empty">No job cards submitted yet.</div></div>
       <div class="scroll-hint" id="hist-scroll-hint" style="display:none;">← Swipe the table sideways to see the Actions column →</div>
@@ -395,6 +417,18 @@ function switchTab(name, btn) {
 function updateJobNoBadge() {
   const val = document.getElementById('f-jobno').value.trim();
   document.getElementById('jobno-display').textContent = val || '…';
+}
+
+// ---- Vehicle ----
+function updateVehicleOther() {
+  const isOther = document.getElementById('f-vehicle').value === 'OTHER';
+  document.getElementById('f-vehicle-other-wrap').style.display = isOther ? 'block' : 'none';
+  if (!isOther) document.getElementById('f-vehicle-other').value = '';
+}
+function getVehicle() {
+  const sel = document.getElementById('f-vehicle').value;
+  if (sel === 'OTHER') return document.getElementById('f-vehicle-other').value.trim();
+  return sel;
 }
 
 // ---- Materials ----
@@ -546,6 +580,7 @@ async function submitJobCard() {
 
   const payload = {
     jobNo,
+    vehicle: getVehicle(),
     name, site: document.getElementById('f-site').value.trim(),
     planon: document.getElementById('f-planon').value.trim(),
     address: document.getElementById('f-address').value.trim(),
@@ -646,11 +681,13 @@ function resetForm() {
   ['f-jobno','f-name','f-site','f-planon','f-address','f-contact','f-tel','f-email','f-billing','f-details',
    'f-exttank-specify','c-degreaser-l','c-disinfectant-l','c-acid-l','c-microbes-l','f-wastestream-other','f-quote-req',
    'c-fattrap-50-qty','c-fattrap-80-qty','c-fattrap-100-qty',
-   'f-customer-name','f-driver-name','f-comments',
+   'f-customer-name','f-driver-name','f-comments','f-vehicle-other',
    'f-timein1','f-timeout1','f-timein2','f-timeout2'].forEach(id => document.getElementById(id).value = '');
   document.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
   document.querySelectorAll('input[type="radio"]').forEach(r => r.checked = false);
   document.getElementById('f-date').valueAsDate = new Date();
+  document.getElementById('f-vehicle').selectedIndex = 0;
+  document.getElementById('f-vehicle-other-wrap').style.display = 'none';
   document.getElementById('mat-list').innerHTML = '';
   pendingBefore = []; pendingAfter = [];
   renderPhotos('before'); renderPhotos('after');
@@ -673,25 +710,29 @@ function clearHistoryFilters() {
   document.getElementById('filter-tech').value = '';
   renderHistory();
 }
-function renderHistory() {
-  renderTechFilterOptions();
-  const el = document.getElementById('history-list');
-  const hint = document.getElementById('hist-scroll-hint');
-  if (!history.length) { el.innerHTML = '<div class="empty">No job cards submitted yet.</div>'; hint.style.display = 'none'; return; }
-
+function getFilteredHistory() {
   const jobnoQuery = document.getElementById('filter-jobno').value.trim();
   const dateFrom = document.getElementById('filter-date-from').value;
   const dateTo = document.getElementById('filter-date-to').value;
   const tech = document.getElementById('filter-tech').value;
 
   const withIdx = history.map((h, idx) => ({ h, idx }));
-  const filtered = withIdx.filter(({ h }) => {
+  return withIdx.filter(({ h }) => {
     if (jobnoQuery && !String(h.jobNo).includes(jobnoQuery)) return false;
     if (dateFrom && h.date < dateFrom) return false;
     if (dateTo && h.date > dateTo) return false;
     if (tech && h.driverName !== tech) return false;
     return true;
   });
+}
+
+function renderHistory() {
+  renderTechFilterOptions();
+  const el = document.getElementById('history-list');
+  const hint = document.getElementById('hist-scroll-hint');
+  if (!history.length) { el.innerHTML = '<div class="empty">No job cards submitted yet.</div>'; hint.style.display = 'none'; return; }
+
+  const filtered = getFilteredHistory();
 
   if (!filtered.length) { el.innerHTML = '<div class="empty">No job cards match these filters.</div>'; hint.style.display = 'none'; return; }
 
@@ -731,6 +772,79 @@ function renderHistory() {
   const wrap = el.querySelector('.hist-table-wrap');
   hint.style.display = (wrap && wrap.scrollWidth > wrap.clientWidth) ? 'block' : 'none';
 }
+// ---- Excel export (all job card fields except signatures and photos) ----
+function fmtFattrapsExport(f) {
+  if (!f) return '';
+  const bits = [];
+  if (f.l50) bits.push(`50L x ${f.l50Qty || '?'}`);
+  if (f.l80) bits.push(`80L x ${f.l80Qty || '?'}`);
+  if (f.l100) bits.push(`100L x ${f.l100Qty || '?'}`);
+  return bits.join(', ');
+}
+function fmtConsumablesExport(c) {
+  if (!c) return '';
+  const bits = [];
+  if (c.degreaser) bits.push(`Degreaser (${c.degreaserL || '?'} L)`);
+  if (c.disinfectant) bits.push(`Disinfectant (${c.disinfectantL || '?'} L)`);
+  if (c.acid) bits.push(`Acid (${c.acidL || '?'} L)`);
+  if (c.microbes) bits.push(`Microbes (${c.microbesL || '?'} L)`);
+  if (c.beads) bits.push('Beads');
+  return bits.join(', ');
+}
+function fmtMaterialsExport(materials) {
+  return (materials || []).map(m => `${m.name}${m.qty ? ' x ' + m.qty : ''}`).join(', ');
+}
+function jobToExportRow(h) {
+  const p = h.payload || {};
+  const extTank = [...(p.extTank || [])];
+  if (p.extTankSpecify) extTank.push(`Specify: ${p.extTankSpecify}`);
+  const wasteStream = [...(p.wasteStream || [])];
+  if (p.wasteStreamOther) wasteStream.push(`Other: ${p.wasteStreamOther}`);
+  return {
+    'Job No': p.jobNo || h.jobNo || '',
+    'Vehicle': p.vehicle || '',
+    'Status': h.status || '',
+    'Date': p.date || h.date || '',
+    'Time In (1)': p.timeIn1 || '', 'Time Out (1)': p.timeOut1 || '',
+    'Time In (2)': p.timeIn2 || '', 'Time Out (2)': p.timeOut2 || '',
+    'Customer Name': p.name || '', 'Site': p.site || '', 'Planon Number': p.planon || '',
+    'Address': p.address || '', 'Contact Person': p.contact || '', 'Telephone': p.tel || '',
+    'Email': p.email || '', 'Billing Information': p.billing || '',
+    'Job Description': p.details || '',
+    'Job Type': (p.jobType || []).join(', '),
+    'Drain Type': (p.drainType || []).join(', '),
+    'Liquid Waste': (p.liquidWaste || []).join(', '),
+    'Pump Out Internal Fattraps': fmtFattrapsExport(p.fattraps),
+    'Pump Out External Fat Trap / Tank': extTank.join(', '),
+    'Consumables': fmtConsumablesExport(p.consumables),
+    'Waste Stream': wasteStream.join(', '),
+    'Waste Type': (p.wasteType || []).join(', '),
+    'Quote Requirements': p.quoteReq || '',
+    'Materials / Parts Used': fmtMaterialsExport(p.materials),
+    'Customer Sign-Off Name': p.customerName || '',
+    'Driver Sign-Off Name': p.driverName || '',
+    'Safe Disposal Required': p.needsDisposalCert ? 'Yes' : 'No',
+    'Disposal Certificate Uploaded': h.needsDisposalCert ? (h.disposalCertUploaded ? 'Yes' : 'No') : '',
+    'Disposal Site': (h.disposalCertData && h.disposalCertData.disposalName) || '',
+    'Comments': p.comments || '',
+    'Service Rating': p.rating || '',
+    'Submitted At': p.submittedAt || h.submittedAt || ''
+  };
+}
+function exportHistoryToExcel() {
+  if (typeof XLSX === 'undefined') { toast('⚠️ Excel export library did not load — check your connection'); return; }
+  const filtered = getFilteredHistory();
+  if (!filtered.length) { toast('No job cards to export — check your filters'); return; }
+
+  const rows = filtered.map(({ h }) => jobToExportRow(h));
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Job Cards');
+  const stamp = new Date().toISOString().slice(0, 10);
+  XLSX.writeFile(wb, `DC24_JobCards_${stamp}.xlsx`);
+  toast(`✅ Exported ${rows.length} job card${rows.length === 1 ? '' : 's'} to Excel`);
+}
+
 async function resend(idx) {
   const item = history[idx];
   toast('Resending...');
