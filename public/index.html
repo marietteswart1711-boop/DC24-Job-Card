@@ -283,6 +283,26 @@
     </div>
 
     <div class="card">
+      <div class="card-title">Dumping Site</div>
+      <div class="field">
+        <label>Dumping Site</label>
+        <select id="f-dumpsite" onchange="updateDumpSiteOther()">
+          <option value="Borcherds Quarry">Borcherds Quarry</option>
+          <option value="Okran">Okran</option>
+          <option value="Drakenstein">Drakenstein</option>
+          <option value="Fuel44">Fuel44</option>
+          <option value="Biogas">Biogas</option>
+          <option value="Nun2Waste">Nun2Waste</option>
+          <option value="OTHER">Other</option>
+        </select>
+      </div>
+      <div class="field" id="f-dumpsite-other-wrap" style="display:none;">
+        <label>Specify Dumping Site</label>
+        <input id="f-dumpsite-other" placeholder="Type dumping site name">
+      </div>
+    </div>
+
+    <div class="card">
       <div class="card-title">Safe Disposal Certificate</div>
       <div class="field" style="margin-bottom:2px;"><label>Is this job card linked to a disposal site certificate? <span class="req">*</span></label></div>
       <div class="chip-group" id="grp-needsdisposal">
@@ -368,8 +388,8 @@
       <div class="sig-actions"><button class="btn btn-outline" onclick="sigPads.disposal.clear()">Clear Signature</button></div>
     </div>
 
-    <div class="card-title">Disposal Certificate Photo</div>
-    <label class="btn btn-add file-btn">📷 Add Certificate Photo<input type="file" accept="image/*" onchange="handleCertPhoto(event)"></label>
+    <div class="card-title">Disposal Certificate (PDF)</div>
+    <label class="btn btn-add file-btn">📄 Add Certificate PDF<input type="file" accept="application/pdf" onchange="handleCertPhoto(event)"></label>
     <div class="photo-grid" id="photo-grid-cert"></div>
 
     <div style="display:flex;gap:10px;margin-top:18px;">
@@ -384,6 +404,7 @@ const KEY = 'dc24_jobcard_history_v1';
 let history = (() => { try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch { return []; } })();
 let pendingBefore = [], pendingAfter = [];
 let pendingCertPhoto = null;
+let pendingCertFileName = '';
 let modalIdx = null;
 let matCount = 0;
 let publicConfig = { googleReviewUrl: '', companyName: '' };
@@ -428,6 +449,18 @@ function updateVehicleOther() {
 function getVehicle() {
   const sel = document.getElementById('f-vehicle').value;
   if (sel === 'OTHER') return document.getElementById('f-vehicle-other').value.trim();
+  return sel;
+}
+
+// ---- Dumping Site ----
+function updateDumpSiteOther() {
+  const isOther = document.getElementById('f-dumpsite').value === 'OTHER';
+  document.getElementById('f-dumpsite-other-wrap').style.display = isOther ? 'block' : 'none';
+  if (!isOther) document.getElementById('f-dumpsite-other').value = '';
+}
+function getDumpSite() {
+  const sel = document.getElementById('f-dumpsite').value;
+  if (sel === 'OTHER') return document.getElementById('f-dumpsite-other').value.trim();
   return sel;
 }
 
@@ -581,6 +614,7 @@ async function submitJobCard() {
   const payload = {
     jobNo,
     vehicle: getVehicle(),
+    dumpSite: getDumpSite(),
     name, site: document.getElementById('f-site').value.trim(),
     planon: document.getElementById('f-planon').value.trim(),
     address: document.getElementById('f-address').value.trim(),
@@ -681,13 +715,15 @@ function resetForm() {
   ['f-jobno','f-name','f-site','f-planon','f-address','f-contact','f-tel','f-email','f-billing','f-details',
    'f-exttank-specify','c-degreaser-l','c-disinfectant-l','c-acid-l','c-microbes-l','f-wastestream-other','f-quote-req',
    'c-fattrap-50-qty','c-fattrap-80-qty','c-fattrap-100-qty',
-   'f-customer-name','f-driver-name','f-comments','f-vehicle-other',
+   'f-customer-name','f-driver-name','f-comments','f-vehicle-other','f-dumpsite-other',
    'f-timein1','f-timeout1','f-timein2','f-timeout2'].forEach(id => document.getElementById(id).value = '');
   document.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
   document.querySelectorAll('input[type="radio"]').forEach(r => r.checked = false);
   document.getElementById('f-date').valueAsDate = new Date();
   document.getElementById('f-vehicle').selectedIndex = 0;
   document.getElementById('f-vehicle-other-wrap').style.display = 'none';
+  document.getElementById('f-dumpsite').selectedIndex = 0;
+  document.getElementById('f-dumpsite-other-wrap').style.display = 'none';
   document.getElementById('mat-list').innerHTML = '';
   pendingBefore = []; pendingAfter = [];
   renderPhotos('before'); renderPhotos('after');
@@ -803,6 +839,7 @@ function jobToExportRow(h) {
   return {
     'Job No': p.jobNo || h.jobNo || '',
     'Vehicle': p.vehicle || '',
+    'Dumping Site': p.dumpSite || '',
     'Status': h.status || '',
     'Date': p.date || h.date || '',
     'Time In (1)': p.timeIn1 || '', 'Time Out (1)': p.timeOut1 || '',
@@ -866,6 +903,7 @@ function openDisposalModal(idx) {
   document.getElementById('f-modal-disposal-name').value = '';
   sigPads.disposal.clear();
   pendingCertPhoto = null;
+  pendingCertFileName = '';
   renderCertPhoto();
   document.getElementById('disposal-modal').style.display = 'flex';
   setTimeout(() => sigPads.disposal.resize(), 60);
@@ -877,12 +915,31 @@ function closeDisposalModal() {
 function handleCertPhoto(e) {
   const file = (e.target.files || [])[0];
   if (!file) return;
-  resizeImage(file, 1400, 0.75).then(dataUrl => { pendingCertPhoto = dataUrl; renderCertPhoto(); });
+  if (file.type !== 'application/pdf') {
+    toast('Please select a PDF file');
+    e.target.value = '';
+    return;
+  }
+  if (file.size > 8 * 1024 * 1024) {
+    toast('⚠️ That PDF is quite large (over 8MB) — it may be slow to send or get rejected by email. A smaller scan works better.');
+  }
+  const reader = new FileReader();
+  reader.onload = ev => {
+    pendingCertPhoto = ev.target.result;
+    pendingCertFileName = file.name;
+    renderCertPhoto();
+  };
+  reader.onerror = () => toast('⚠️ Could not read that file — try again');
+  reader.readAsDataURL(file);
   e.target.value = '';
 }
 function renderCertPhoto() {
   document.getElementById('photo-grid-cert').innerHTML = pendingCertPhoto
-    ? `<div class="photo-item"><img src="${pendingCertPhoto}"><button class="rm" onclick="pendingCertPhoto=null;renderCertPhoto()">✕</button></div>`
+    ? `<div style="display:inline-flex;align-items:center;gap:8px;background:#f2f2f2;border-radius:8px;padding:8px 12px;">
+         <span style="font-size:20px;">📄</span>
+         <span style="font-size:12px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(pendingCertFileName || 'certificate.pdf')}</span>
+         <button class="rm" style="position:static;width:20px;height:20px;flex:0 0 auto;" onclick="pendingCertPhoto=null;pendingCertFileName='';renderCertPhoto()">✕</button>
+       </div>`
     : '';
 }
 async function saveDisposalCert() {
@@ -891,7 +948,7 @@ async function saveDisposalCert() {
   const disposalName = document.getElementById('f-modal-disposal-name').value.trim();
   if (!disposalName) { toast('Disposal site name is required'); return; }
   if (!sigPads.disposal.hasContent()) { toast('Disposal site signature is required'); return; }
-  if (!pendingCertPhoto) { toast('Please add a photo of the disposal certificate'); return; }
+  if (!pendingCertPhoto) { toast('Please add the disposal certificate PDF'); return; }
 
   const certPayload = {
     jobNo: item.jobNo, name: item.name, driverName: item.driverName, date: item.date,
