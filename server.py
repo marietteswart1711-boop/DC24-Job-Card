@@ -10,6 +10,10 @@ photos attached) and sends it via SMTP using the credentials in config.json
 Job numbers are entered manually by the technician on the form — this server
 does not assign or track a job number sequence.
 
+Emailed job cards include the DC24 letterhead header and footer (logo/contact
+banner + SnapScan/review QR codes) inlined from assets/dc24_header.png and
+assets/dc24_footer.png — see the assets/ folder next to this file.
+
 Setup (local):
     1. cp config.example.json config.json
     2. Edit config.json with your real SMTP details (see README.md)
@@ -38,6 +42,9 @@ from email.utils import formatdate
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
 PUBLIC_DIR = os.path.join(BASE_DIR, "public")
+ASSETS_DIR = os.path.join(BASE_DIR, "assets")
+HEADER_IMAGE_PATH = os.path.join(ASSETS_DIR, "dc24_header.png")
+FOOTER_IMAGE_PATH = os.path.join(ASSETS_DIR, "dc24_footer.png")
 
 
 # Every key config.json can hold can also be set as an environment variable
@@ -159,8 +166,11 @@ def build_job_card_html(cfg, job):
 
     html = f"""
     <div style="font-family:Arial,sans-serif;font-size:14px;color:#222;max-width:640px;">
+      <img src="cid:dc24_header" alt="{escape(cfg.get('COMPANY_NAME','DC24'))}" style="width:100%;max-width:640px;display:block;margin-bottom:14px;">
+
       <h2 style="color:#1a1a1a;margin-bottom:4px;">{escape(cfg.get('COMPANY_NAME','Job Card'))} — Job Card #{escape(job.get('jobNo',''))}</h2>
       <p style="color:#888;margin-top:0;">Submitted {escape(job.get('submittedAt',''))}</p>
+      {f"<p style='margin:2px 0 12px;'><strong>Vehicle:</strong> {escape(job.get('vehicle'))}</p>" if job.get('vehicle') else ""}
 
       <h3 style="margin-bottom:4px;">Customer Details</h3>
       <table style="border-collapse:collapse;margin-bottom:16px;">
@@ -212,9 +222,32 @@ def build_job_card_html(cfg, job):
       <p style="margin-top:16px;color:#888;font-size:12px;">
         Before/after photos and all signatures are attached to this email.
       </p>
+
+      <img src="cid:dc24_footer" alt="" style="width:100%;max-width:640px;display:block;margin-top:14px;">
     </div>
     """
     return html
+
+
+def attach_header_footer(msg):
+    """
+    Inlines the DC24 letterhead header and footer (logo/contact banner at the
+    top, SnapScan/review QR codes and contact details at the bottom) into the
+    job card email using Content-ID references, so they render as part of the
+    email body itself rather than as separate file attachments to open. If
+    the image files aren't present (e.g. someone deploys without copying the
+    assets/ folder across), this quietly skips them instead of failing the
+    whole email — the job card still sends, just without the letterhead.
+    """
+    for cid, path in (("dc24_header", HEADER_IMAGE_PATH), ("dc24_footer", FOOTER_IMAGE_PATH)):
+        if not os.path.exists(path):
+            continue
+        with open(path, "rb") as f:
+            raw = f.read()
+        img = MIMEImage(raw, _subtype="png")
+        img.add_header("Content-ID", f"<{cid}>")
+        img.add_header("Content-Disposition", "inline", filename=f"{cid}.png")
+        msg.attach(img)
 
 
 def attach_job_card_files(msg, job):
@@ -254,6 +287,7 @@ def build_email(cfg, job):
     msg["To"] = ", ".join(recipients)
     msg["Date"] = formatdate(localtime=True)
     msg.attach(MIMEText(build_job_card_html(cfg, job), "html"))
+    attach_header_footer(msg)
     attach_job_card_files(msg, job)
     return msg
 
@@ -271,6 +305,7 @@ def build_client_copy_email(cfg, job):
     msg["To"] = job.get("email", "").strip()
     msg["Date"] = formatdate(localtime=True)
     msg.attach(MIMEText(build_job_card_html(cfg, job), "html"))
+    attach_header_footer(msg)
     attach_job_card_files(msg, job)
     return msg
 
