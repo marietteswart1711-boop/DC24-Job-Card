@@ -1,4 +1,4 @@
-[dc24_README.md](https://github.com/user-attachments/files/30040832/dc24_README.md)
+[dc24_README.md](https://github.com/user-attachments/files/30041756/dc24_README.md)
 # DC24 Job Card App
 
 A phone-friendly job card matching your existing DC24 paper job card/safe disposal certificate:
@@ -125,10 +125,10 @@ after the job card itself is already complete.
 To clear the flag:
 
 1. Open the **History** tab and tap **Upload Disposal Certificate** on the flagged job card.
-2. Fill in the disposal site's name, have them sign on screen, and attach a photo of the physical
-   certificate handed over at the site.
+2. Fill in the disposal site's name, have them sign on screen, and attach the certificate as a
+   **PDF** (this upload is PDF-only — a scanned or emailed copy of the certificate, not a photo).
 3. Tap **Save Certificate** — this sends a second, separate email to the office with the disposal
-   site signature and certificate photo attached, subject line
+   site signature and the certificate PDF attached, subject line
    `Safe Disposal Certificate — Job Card #<job no> - <client>`.
 4. Once saved successfully, the job card's red flag clears and it shows "Certificate uploaded ✓".
 
@@ -214,6 +214,15 @@ Dyna LW8, DYNA 2.0, or OTHER. Selecting OTHER reveals a free-text field so the t
 in a vehicle name that isn't on the list. The vehicle appears on the emailed job card and in the
 Excel export.
 
+## Dumping Site field
+
+Each job card has a Dumping Site dropdown: Borcherds Quarry, Okran, Drakenstein, Fuel44, Biogas,
+Nun2Waste, or Other. Selecting Other reveals a free-text field for a dumping site that isn't on the
+list. This is separate from the Safe Disposal Certificate follow-up (which records the disposal
+site's own signature and a certificate photo after the load is dumped) — Dumping Site is just a
+quick record of where the load was taken, filled in on the main job card itself. It appears on the
+emailed job card and in the Excel export.
+
 ## Downloading job card history to Excel
 
 On the **History** tab, tap **⬇ Download to Excel** to export the currently filtered list of job
@@ -226,8 +235,8 @@ for signatures and photos, which don't translate to a spreadsheet. This works fu
 
 ## Fields captured on each job card
 
-- Job No. (entered manually by the technician), Vehicle, Planon Number, customer name, site, address,
-  contact person, telephone, email, billing information
+- Job No. (entered manually by the technician), Vehicle, Dumping Site, Planon Number, customer
+  name, site, address, contact person, telephone, email, billing information
 - Job Description details
 - Job Type, Drain Type, Liquid Waste, Pump Out Internal Fattraps, Pump External Tank (+ specify),
   Consumables (Degreaser/Disinfectant/Acid with litres, Microbes, Beads), Waste Stream (+ other),
@@ -241,9 +250,9 @@ for signatures and photos, which don't translate to a spreadsheet. This works fu
 - A Yes/No answer to "Is this job card linked to a disposal site certificate?"
 - Comments and a Poor/Fair/Good/Excellent service rating
 - Date, plus two Time In/Time Out slots for jobs with a return visit the same day
-- If Yes was selected above: a follow-up Disposal Site sign-off (name + signature) and a photo of
-  the physical certificate, captured later from the History tab (see "Safe disposal certificate
-  follow-up" above)
+- If Yes was selected above: a follow-up Disposal Site sign-off (name + signature) and the
+  certificate itself as a PDF upload, captured later from the History tab (see "Safe disposal
+  certificate follow-up" above)
 
 ## Limitations to know about
 
