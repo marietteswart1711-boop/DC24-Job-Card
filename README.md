@@ -1,4 +1,4 @@
-[dc24_README.md](https://github.com/user-attachments/files/29996312/dc24_README.md)
+[dc24_README.md](https://github.com/user-attachments/files/30040832/dc24_README.md)
 # DC24 Job Card App
 
 A phone-friendly job card matching your existing DC24 paper job card/safe disposal certificate:
@@ -16,8 +16,22 @@ the completed job card is emailed to your office automatically — no manual ste
 - `server.py` — a small Python server that receives submitted job cards and emails everything via
   your real SMTP account (Gmail, Outlook/365, or your existing business mail server)
 - `config.example.json` — template for your SMTP settings
+- `assets/dc24_header.png` and `assets/dc24_footer.png` — the DC24 letterhead banner and footer
+  (SnapScan + review QR codes) that appear at the top and bottom of every emailed job card
 
 No external packages are required — everything runs on Python's standard library.
+
+## Letterhead header/footer
+
+Every emailed job card (both the office copy and the client's copy) now includes your letterhead
+as part of the email body: the `assets/dc24_header.png` banner at the top, and the
+`assets/dc24_footer.png` footer (SnapScan payment QR code, review QR code, and contact details) at
+the bottom. These are inlined into the email itself — not sent as separate attachments to open.
+
+If you ever want to update either image (e.g. a new logo, a new QR code), just replace the file at
+`assets/dc24_header.png` or `assets/dc24_footer.png` with a same-named PNG and commit — no code
+changes needed. If either file is missing, the job card email still sends fine, it just won't have
+that banner.
 
 ## Job numbers
 
@@ -193,9 +207,26 @@ was submitted through the real HTTP form-submission code path, and the resulting
 inspected directly. The subject line, all job details, the materials table, and both the signature
 and photo attachments all arrived correctly formatted.
 
+## Vehicle field
+
+Each job card has a Vehicle dropdown: Gigantor LW11, Big Foot LW10, Isuzu LW9, Biggie Smalls,
+Dyna LW8, DYNA 2.0, or OTHER. Selecting OTHER reveals a free-text field so the technician can type
+in a vehicle name that isn't on the list. The vehicle appears on the emailed job card and in the
+Excel export.
+
+## Downloading job card history to Excel
+
+On the **History** tab, tap **⬇ Download to Excel** to export the currently filtered list of job
+cards (Job No., date-range, and technician filters all apply to the export too — clear the filters
+first if you want everything) to a real `.xlsx` file, downloaded straight to the phone/device. The
+export includes every field on the job card — customer details, job description, all the
+checklists, materials, vehicle, comments, rating, times, and disposal certificate status — except
+for signatures and photos, which don't translate to a spreadsheet. This works fully offline/on-device
+(no server round-trip) using the SheetJS library loaded from its CDN.
+
 ## Fields captured on each job card
 
-- Job No. (entered manually by the technician), Planon Number, customer name, site, address,
+- Job No. (entered manually by the technician), Vehicle, Planon Number, customer name, site, address,
   contact person, telephone, email, billing information
 - Job Description details
 - Job Type, Drain Type, Liquid Waste, Pump Out Internal Fattraps, Pump External Tank (+ specify),
