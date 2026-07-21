@@ -12,19 +12,26 @@ does not assign or track a job number sequence.
 
 Emailed job cards include the DC24 letterhead header and footer (logo/contact
 banner + SnapScan/review QR codes) inlined from assets/dc24_header.png and
-assets/dc24_footer.png — see the assets/ folder next to this file.
+assets/dc24_footer.png — see the assets/ folder next to this file. Every job
+card email (office copy and client copy) also gets a proper PDF version of
+the job card attached (JobCard_<no>.pdf) — same letterhead, details,
+signatures and photos, laid out for printing/filing. Building that PDF uses
+reportlab + Pillow (see requirements.txt) — if those aren't installed for
+some reason, the email still sends fine, it just won't have the PDF attached.
 
 Setup (local):
     1. cp config.example.json config.json
     2. Edit config.json with your real SMTP details (see README.md)
-    3. python3 server.py
-    4. On a technician's phone (same wifi), open the "Network:" URL printed below
+    3. pip install -r requirements.txt   (needed for the PDF attachment)
+    4. python3 server.py
+    5. On a technician's phone (same wifi), open the "Network:" URL printed below
 
 Setup (hosted, e.g. Render/Railway):
     Skip config.json entirely and set the same keys as environment variables
     in your hosting platform's dashboard instead — see the "Going live"
     section of README.md. Never commit config.json or share it — it contains
-    your email password.
+    your email password. Make sure the platform's Build Command runs
+    `pip install -r requirements.txt` so the PDF attachment works.
 """
 
 import http.server
@@ -34,11 +41,25 @@ import re
 import smtplib
 import ssl
 import base64
+from io import BytesIO
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.image import MIMEImage
 from email.mime.application import MIMEApplication
 from email.utils import formatdate
+
+try:
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import mm
+    from reportlab.lib import colors
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.platypus import (
+        SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image as RLImage
+    )
+    from PIL import Image as PILImage
+    PDF_LIBS_AVAILABLE = True
+except ImportError:
+    PDF_LIBS_AVAILABLE = False
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
@@ -285,6 +306,280 @@ def attach_job_card_files(msg, job):
                 msg.attach(img)
 
 
+if PDF_LIBS_AVAILABLE:
+    _pdf_styles = getSampleStyleSheet()
+    _PDF_H1 = ParagraphStyle('JCH1', parent=_pdf_styles['Heading1'], fontSize=15, spaceAfter=2, textColor=colors.HexColor('#1a1a1a'))
+    _PDF_SUB = ParagraphStyle('JCSub', parent=_pdf_styles['Normal'], fontSize=9, textColor=colors.HexColor('#888888'), spaceAfter=10)
+    _PDF_H2 = ParagraphStyle('JCH2', parent=_pdf_styles['Heading2'], fontSize=11, spaceBefore=10, spaceAfter=4, textColor=colors.HexColor('#1a1a1a'))
+    _PDF_BODY = ParagraphStyle('JCBody', parent=_pdf_styles['Normal'], fontSize=9.5, leading=13)
+    _PDF_LABEL = ParagraphStyle('JCLabel', parent=_pdf_styles['Normal'], fontSize=9.5, leading=13, fontName='Helvetica-Bold')
+    _PDF_SMALL_GREY = ParagraphStyle('JCSmallGrey', parent=_pdf_styles['Normal'], fontSize=8, textColor=colors.HexColor('#999999'))
+
+
+def _pdf_escape(s):
+    return escape(s)
+
+
+def _downsample_for_pdf(raw_bytes, target_width_pt, dpi=150):
+    """
+    Re-encodes an image at a sane resolution for print (target DPI at the size
+    it'll actually appear on the page) so the PDF — and the email it's
+    attached to — doesn't balloon from full-resolution phone photos or the
+    large letterhead banner. Returns (jpeg_bytes, width_px, height_px).
+    """
+    pil_im = PILImage.open(BytesIO(raw_bytes))
+    if pil_im.mode not in ("RGB", "L"):
+        pil_im = pil_im.convert("RGB")
+    target_width_px = max(1, int(target_width_pt / 72.0 * dpi))
+    if pil_im.width > target_width_px:
+        target_height_px = max(1, round(pil_im.height * (target_width_px / pil_im.width)))
+        pil_im = pil_im.resize((target_width_px, target_height_px), PILImage.LANCZOS)
+    out = BytesIO()
+    pil_im.save(out, format="JPEG", quality=80, optimize=True)
+    return out.getvalue(), pil_im.width, pil_im.height
+
+
+def _fitted_image(raw_bytes, max_width_pt, max_height_pt=None):
+    """
+    Returns a reportlab Image flowable scaled to fit within max_width_pt (and
+    max_height_pt if given), preserving aspect ratio, after downsampling the
+    source image to a sane print resolution. Returns None if the bytes aren't
+    a readable image (e.g. missing/empty signature).
+    """
+    if not raw_bytes:
+        return None
+    try:
+        jpeg_bytes, w_px, h_px = _downsample_for_pdf(raw_bytes, max_width_pt)
+    except Exception:
+        return None
+    if not w_px or not h_px:
+        return None
+    ratio = h_px / w_px
+    width = max_width_pt
+    height = width * ratio
+    if max_height_pt and height > max_height_pt:
+        height = max_height_pt
+        width = height / ratio
+    return RLImage(BytesIO(jpeg_bytes), width=width, height=height)
+
+
+def _full_width_image(path, max_width_pt):
+    if not os.path.exists(path):
+        return None
+    with open(path, "rb") as f:
+        raw = f.read()
+    return _fitted_image(raw, max_width_pt)
+
+
+def _pdf_kv_table(rows, col_widths):
+    rows = [r for r in rows if r[1]]
+    if not rows:
+        return None
+    data = [[Paragraph(_pdf_escape(label) + ":", _PDF_LABEL), Paragraph(_pdf_escape(value), _PDF_BODY)] for label, value in rows]
+    t = Table(data, colWidths=col_widths, hAlign='LEFT')
+    t.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 0),
+        ('RIGHTPADDING', (0, 0), (0, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 2),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+    ]))
+    return t
+
+
+def _pdf_checklist_para(label, items):
+    if not items:
+        return None
+    return Paragraph(f"<b>{_pdf_escape(label)}:</b> {_pdf_escape(', '.join(items))}", _PDF_BODY)
+
+
+def build_job_card_pdf(cfg, job, content_width_mm=178):
+    """
+    Builds a printable PDF version of the job card — same letterhead, details,
+    materials, sign-off names + signatures, and before/after photos as the
+    HTML email — so the office and client both get a proper document they can
+    file or print, not just an inline email. Returns None (rather than
+    raising) if the PDF libraries aren't installed, so callers can treat a
+    missing PDF as "skip it" instead of failing the whole email.
+    """
+    if not PDF_LIBS_AVAILABLE:
+        return None
+
+    buf = BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=A4,
+        topMargin=14 * mm, bottomMargin=14 * mm, leftMargin=16 * mm, rightMargin=16 * mm
+    )
+    cw = content_width_mm * mm
+    story = []
+
+    header_img = _full_width_image(HEADER_IMAGE_PATH, cw)
+    if header_img:
+        story.append(header_img)
+        story.append(Spacer(1, 8))
+
+    story.append(Paragraph(f"{_pdf_escape(cfg.get('COMPANY_NAME', 'Job Card'))} — Job Card #{_pdf_escape(job.get('jobNo', ''))}", _PDF_H1))
+    story.append(Paragraph(f"Submitted {_pdf_escape(job.get('submittedAt', ''))}", _PDF_SUB))
+
+    top_bits = [('Vehicle', job.get('vehicle')), ('Dumping Site', job.get('dumpSite'))]
+    t = _pdf_kv_table(top_bits, [35 * mm, cw - 35 * mm])
+    if t:
+        story.append(t)
+        story.append(Spacer(1, 4))
+
+    story.append(Paragraph("Customer Details", _PDF_H2))
+    cust_rows = [
+        ('Name', job.get('name')), ('Site', job.get('site')), ('Planon Number', job.get('planon')),
+        ('Address', job.get('address')), ('Contact Person', job.get('contact')),
+        ('Telephone', job.get('tel')), ('Email', job.get('email')), ('Billing Information', job.get('billing')),
+    ]
+    t = _pdf_kv_table(cust_rows, [35 * mm, cw - 35 * mm])
+    if t:
+        story.append(t)
+
+    story.append(Paragraph("Job Description", _PDF_H2))
+    story.append(Paragraph(_pdf_escape(job.get('details', '')).replace("\n", "<br/>"), _PDF_BODY))
+
+    f = job.get('fattraps') or {}
+    fattrap_bits = []
+    if f.get('l50'): fattrap_bits.append(f"50L x {f.get('l50Qty') or '?'}")
+    if f.get('l80'): fattrap_bits.append(f"80L x {f.get('l80Qty') or '?'}")
+    if f.get('l100'): fattrap_bits.append(f"100L x {f.get('l100Qty') or '?'}")
+
+    c = job.get('consumables') or {}
+    consumable_bits = []
+    if c.get('degreaser'): consumable_bits.append(f"Degreaser ({c.get('degreaserL') or '?'} L)")
+    if c.get('disinfectant'): consumable_bits.append(f"Disinfectant ({c.get('disinfectantL') or '?'} L)")
+    if c.get('acid'): consumable_bits.append(f"Acid ({c.get('acidL') or '?'} L)")
+    if c.get('microbes'): consumable_bits.append(f"Microbes ({c.get('microbesL') or '?'} L)")
+    if c.get('beads'): consumable_bits.append("Beads")
+
+    ext_tank = list(job.get('extTank') or [])
+    if job.get('extTankSpecify'):
+        ext_tank.append(f"Specify: {job['extTankSpecify']}")
+    waste_stream = list(job.get('wasteStream') or [])
+    if job.get('wasteStreamOther'):
+        waste_stream.append(f"Other: {job['wasteStreamOther']}")
+
+    for label, items in [
+        ('Job Type', job.get('jobType')), ('Drain Type', job.get('drainType')),
+        ('Liquid Waste', job.get('liquidWaste')), ('Pump Out Internal Fattraps', fattrap_bits),
+        ('Pump Out External Fat Trap / Tank', ext_tank), ('Consumables', consumable_bits),
+        ('Waste Stream', waste_stream), ('Waste Type', job.get('wasteType')),
+        ('Quote Requirements', [job['quoteReq']] if job.get('quoteReq') else []),
+    ]:
+        p = _pdf_checklist_para(label, items)
+        if p:
+            story.append(Spacer(1, 3))
+            story.append(p)
+
+    materials = job.get('materials') or []
+    story.append(Paragraph("Materials / Parts Used", _PDF_H2))
+    if materials:
+        data = [["Material", "Qty"]] + [[_pdf_escape(m.get('name', '')), _pdf_escape(m.get('qty', ''))] for m in materials]
+        mt = Table(data, colWidths=[cw - 30 * mm, 30 * mm])
+        mt.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f2f2f2')),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#dddddd')),
+            ('LEFTPADDING', (0, 0), (-1, -1), 6), ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+            ('TOPPADDING', (0, 0), (-1, -1), 4), ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ]))
+        story.append(mt)
+    else:
+        story.append(Paragraph("None recorded", _PDF_SMALL_GREY))
+
+    story.append(Paragraph("Sign-Off", _PDF_H2))
+    sign_cells = []
+    for name_label, name_key, sig_key in [
+        ("Customer", "customerName", "customerSignature"),
+        ("Driver", "driverName", "driverSignature"),
+    ]:
+        cell = [Paragraph(f"<b>{name_label}:</b> {_pdf_escape(job.get(name_key, ''))}", _PDF_BODY)]
+        subtype, raw = data_url_to_bytes(job.get(sig_key) or "")
+        img = _fitted_image(raw, (cw / 2) - 6 * mm, 28 * mm)
+        if img:
+            cell.append(Spacer(1, 3))
+            cell.append(img)
+        else:
+            cell.append(Paragraph("(no signature)", _PDF_SMALL_GREY))
+        sign_cells.append(cell)
+    sign_table = Table([sign_cells], colWidths=[cw / 2, cw / 2])
+    sign_table.setStyle(TableStyle([('VALIGN', (0, 0), (-1, -1), 'TOP')]))
+    story.append(sign_table)
+
+    story.append(Paragraph("Safe Disposal Certificate", _PDF_H2))
+    disp_txt = ("Linked to a disposal site certificate — technician will upload the certificate "
+                "separately after dumping the load." if job.get('needsDisposalCert')
+                else "Not linked to a disposal site certificate.")
+    story.append(Paragraph(disp_txt, _PDF_BODY))
+
+    if job.get('comments'):
+        story.append(Paragraph("Comments", _PDF_H2))
+        story.append(Paragraph(_pdf_escape(job.get('comments')).replace("\n", "<br/>"), _PDF_BODY))
+
+    time_bits = []
+    if job.get('timeIn1') or job.get('timeOut1'):
+        time_bits.append(f"Visit 1: {job.get('timeIn1', '?')} - {job.get('timeOut1', '?')}")
+    if job.get('timeIn2') or job.get('timeOut2'):
+        time_bits.append(f"Visit 2: {job.get('timeIn2', '?')} - {job.get('timeOut2', '?')}")
+    bottom_rows = [
+        ('Service Rating', job.get('rating')), ('Date', job.get('date')),
+        ('Time', ' | '.join(time_bits)),
+    ]
+    t = _pdf_kv_table(bottom_rows, [35 * mm, cw - 35 * mm])
+    if t:
+        story.append(Spacer(1, 4))
+        story.append(t)
+
+    for group_label, key in [("Before Photos", "photosBefore"), ("After Photos", "photosAfter")]:
+        photos = job.get(key) or []
+        if not photos:
+            continue
+        story.append(Paragraph(group_label, _PDF_H2))
+        thumbs = []
+        for p in photos:
+            subtype, raw = data_url_to_bytes(p)
+            img = _fitted_image(raw, (cw / 3) - 4 * mm, 45 * mm)
+            if img:
+                thumbs.append(img)
+        rows = [thumbs[i:i + 3] for i in range(0, len(thumbs), 3)]
+        for prow in rows:
+            while len(prow) < 3:
+                prow.append("")
+            pt = Table([prow], colWidths=[cw / 3] * 3)
+            pt.setStyle(TableStyle([('VALIGN', (0, 0), (-1, -1), 'TOP'), ('TOPPADDING', (0, 0), (-1, -1), 4)]))
+            story.append(pt)
+
+    footer_img = _full_width_image(FOOTER_IMAGE_PATH, cw)
+    if footer_img:
+        story.append(Spacer(1, 10))
+        story.append(footer_img)
+
+    doc.build(story)
+    return buf.getvalue()
+
+
+def attach_job_card_pdf(msg, cfg, job):
+    """
+    Attaches the printable PDF version of the job card. Never lets a PDF
+    build problem (missing library, a malformed image, whatever) stop the
+    email itself from sending — the HTML body and image attachments are
+    already a complete record even if the PDF can't be built for some reason.
+    """
+    try:
+        pdf_bytes = build_job_card_pdf(cfg, job)
+    except Exception as e:
+        print(f"WARNING: could not build job card PDF for #{job.get('jobNo')}: {e}")
+        return
+    if not pdf_bytes:
+        return
+    part = MIMEApplication(pdf_bytes, _subtype="pdf")
+    part.add_header("Content-Disposition", "attachment", filename=f"JobCard_{job.get('jobNo','')}.pdf")
+    msg.attach(part)
+
+
 def build_email(cfg, job):
     """The internal office copy — unchanged rating-based subject/recipient logic."""
     msg = MIMEMultipart()
@@ -303,6 +598,7 @@ def build_email(cfg, job):
     msg.attach(MIMEText(build_job_card_html(cfg, job), "html"))
     attach_header_footer(msg)
     attach_job_card_files(msg, job)
+    attach_job_card_pdf(msg, cfg, job)
     return msg
 
 
@@ -321,6 +617,7 @@ def build_client_copy_email(cfg, job):
     msg.attach(MIMEText(build_job_card_html(cfg, job), "html"))
     attach_header_footer(msg)
     attach_job_card_files(msg, job)
+    attach_job_card_pdf(msg, cfg, job)
     return msg
 
 
