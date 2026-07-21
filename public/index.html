@@ -376,6 +376,28 @@
   </div>
 </div>
 
+<div id="edit-times-modal" class="modal-overlay">
+  <div class="modal-box">
+    <div class="card-title">Edit Times — Job #<span id="edit-times-jobno"></span></div>
+    <div class="hint" style="margin-bottom:14px;">Correct the time(s) recorded on this job card, then save — the job card will be re-sent to the office (and client, if they have a copy) with the updated times.</div>
+
+    <div class="field"><label>Date</label><input id="edit-times-date" type="date"></div>
+    <div class="row2">
+      <div class="field"><label>Time In (1)</label><input id="edit-timein1" type="time"></div>
+      <div class="field"><label>Time Out (1)</label><input id="edit-timeout1" type="time"></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label>Time In (2)</label><input id="edit-timein2" type="time"></div>
+      <div class="field"><label>Time Out (2)</label><input id="edit-timeout2" type="time"></div>
+    </div>
+
+    <div style="display:flex;gap:10px;margin-top:18px;">
+      <button class="btn btn-outline" onclick="closeEditTimesModal()">Cancel</button>
+      <button class="btn btn-primary" id="edit-times-save-btn" onclick="saveEditedTimes()">Save &amp; Resend</button>
+    </div>
+  </div>
+</div>
+
 <div id="disposal-modal" class="modal-overlay">
   <div class="modal-box">
     <div class="card-title">Safe Disposal Certificate — Job #<span id="modal-jobno"></span></div>
@@ -797,6 +819,7 @@ function renderHistory() {
               <td><span class="tag ${h.status === 'sent' ? 'tag-sent' : 'tag-failed'}">${h.status === 'sent' ? 'Sent ✓' : 'Failed'}</span></td>
               <td><div class="btn-cell">
                 ${h.status === 'failed' ? `<button class="btn btn-outline" onclick="resend(${idx})">Resend</button>` : ''}
+                <button class="btn btn-outline" onclick="openEditTimesModal(${idx})">Edit Times</button>
                 ${flagged ? `<button class="btn btn-primary" style="background:#a8281c;" onclick="openDisposalModal(${idx})">Upload Certificate</button>` : ''}
               </div></td>
             </tr>`;
@@ -893,6 +916,62 @@ async function resend(idx) {
     saveHistory(); renderHistory();
     toast(res.ok ? '✅ Resent successfully' : '⚠️ Still failed — check connection');
   } catch (e) { toast('⚠️ Still failed — check connection'); }
+}
+
+// ---- Edit times (correct a job card after the fact) ----
+let editTimesIdx = null;
+function openEditTimesModal(idx) {
+  editTimesIdx = idx;
+  const item = history[idx];
+  const p = item.payload || {};
+  document.getElementById('edit-times-jobno').textContent = item.jobNo;
+  document.getElementById('edit-times-date').value = p.date || item.date || '';
+  document.getElementById('edit-timein1').value = p.timeIn1 || '';
+  document.getElementById('edit-timeout1').value = p.timeOut1 || '';
+  document.getElementById('edit-timein2').value = p.timeIn2 || '';
+  document.getElementById('edit-timeout2').value = p.timeOut2 || '';
+  document.getElementById('edit-times-modal').style.display = 'flex';
+}
+function closeEditTimesModal() {
+  document.getElementById('edit-times-modal').style.display = 'none';
+  editTimesIdx = null;
+}
+async function saveEditedTimes() {
+  if (editTimesIdx === null) return;
+  const item = history[editTimesIdx];
+  if (!item.payload) { toast('⚠️ Original job card details are missing on this device — cannot resend'); return; }
+
+  item.payload.date = document.getElementById('edit-times-date').value;
+  item.payload.timeIn1 = document.getElementById('edit-timein1').value;
+  item.payload.timeOut1 = document.getElementById('edit-timeout1').value;
+  item.payload.timeIn2 = document.getElementById('edit-timein2').value;
+  item.payload.timeOut2 = document.getElementById('edit-timeout2').value;
+  item.date = item.payload.date;
+
+  const btn = document.getElementById('edit-times-save-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Saving...';
+
+  let ok = false;
+  try {
+    const res = await fetch('/api/submit-jobcard', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(item.payload)
+    });
+    ok = res.ok;
+  } catch (e) { ok = false; }
+
+  btn.disabled = false;
+  btn.innerHTML = 'Save & Resend';
+
+  item.status = ok ? 'sent' : 'failed';
+  saveHistory(); renderHistory();
+
+  if (ok) {
+    toast('✅ Times updated — job card re-sent to the office');
+    closeEditTimesModal();
+  } else {
+    toast('⚠️ Could not resend — check connection and try again. Your edits are saved on this device, so it\'s safe to retry.');
+  }
 }
 
 // ---- Disposal certificate follow-up ----
