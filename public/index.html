@@ -120,6 +120,14 @@
   <!-- ===== NEW JOB CARD ===== -->
   <div class="tab active" id="tab-new">
 
+    <div class="card" id="editing-banner" style="display:none;background:#fff7e6;border:1.5px solid #f0c36d;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+        <div style="font-size:13px;font-weight:700;color:#8a6100;">✏️ Viewing/editing Job Card #<span id="editing-jobno-label"></span></div>
+        <button class="btn btn-outline" style="width:auto;padding:6px 12px;font-size:12px;flex:0 0 auto;" onclick="cancelEditJobCard()">Cancel</button>
+      </div>
+      <div class="hint" style="margin-top:6px;">Make any changes below, then tap <strong>Update &amp; Resend</strong> at the bottom to save and re-send the corrected job card.</div>
+    </div>
+
     <div class="card">
       <div class="card-title">Job Number</div>
       <div class="field">
@@ -429,6 +437,7 @@ let pendingCertPhoto = null;
 let pendingCertFileName = '';
 let modalIdx = null;
 let matCount = 0;
+let editingHistoryIdx = null;
 let publicConfig = { googleReviewUrl: '', companyName: '' };
 
 async function fetchPublicConfig() {
@@ -604,11 +613,30 @@ function makeSigPad(name) {
   window.addEventListener('resize', resize);
   setTimeout(resize, 50);
 
+  function loadFromDataURL(url) {
+    return new Promise((resolve) => {
+      if (!url) { resolve(); return; }
+      resize();
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) { resolve(); return; }
+      const img = new Image();
+      img.onload = () => {
+        ctx.clearRect(0, 0, rect.width, rect.height);
+        ctx.drawImage(img, 0, 0, rect.width, rect.height);
+        hasContent = true;
+        resolve();
+      };
+      img.onerror = () => resolve();
+      img.src = url;
+    });
+  }
+
   return {
     clear: () => { ctx.clearRect(0, 0, canvas.width, canvas.height); hasContent = false; },
     hasContent: () => hasContent,
     dataURL: () => canvas.toDataURL('image/png'),
-    resize: () => resize()
+    resize: () => resize(),
+    loadFromDataURL
   };
 }
 ['customer','driver','disposal'].forEach(n => sigPads[n] = makeSigPad(n));
@@ -680,6 +708,8 @@ async function submitJobCard() {
     submittedAt: new Date().toISOString()
   };
 
+  const wasEditing = editingHistoryIdx !== null;
+
   const btn = document.getElementById('submit-btn');
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span> Sending...';
@@ -693,23 +723,41 @@ async function submitJobCard() {
     if (ok) { try { clientCopySent = !!(await res.json()).clientCopySent; } catch (e) {} }
   } catch (e) { ok = false; }
 
-  history.push({
-    jobNo, name, driverName, date: payload.date, submittedAt: payload.submittedAt,
-    status: ok ? 'sent' : 'failed', payload,
-    needsDisposalCert: payload.needsDisposalCert,
-    disposalCertUploaded: false,
-    disposalCertData: null
-  });
+  if (wasEditing) {
+    const existing = history[editingHistoryIdx] || {};
+    history[editingHistoryIdx] = {
+      jobNo, name, driverName, date: payload.date, submittedAt: payload.submittedAt,
+      status: ok ? 'sent' : 'failed', payload,
+      needsDisposalCert: payload.needsDisposalCert,
+      disposalCertUploaded: existing.disposalCertUploaded || false,
+      disposalCertData: existing.disposalCertData || null
+    };
+  } else {
+    history.push({
+      jobNo, name, driverName, date: payload.date, submittedAt: payload.submittedAt,
+      status: ok ? 'sent' : 'failed', payload,
+      needsDisposalCert: payload.needsDisposalCert,
+      disposalCertUploaded: false,
+      disposalCertData: null
+    });
+  }
   saveHistory();
 
-  btn.disabled = false; btn.innerHTML = 'Complete Job Card';
-  showThankYou(ok, clientCopySent, !!payload.email);
+  btn.disabled = false; btn.innerHTML = wasEditing ? 'Update & Resend' : 'Complete Job Card';
+  showThankYou(ok, clientCopySent, !!payload.email, wasEditing);
 }
 
-function showThankYou(sentOk, clientCopySent, hadClientEmail) {
-  let statusMsg = sentOk
-    ? 'Sent to the office.'
-    : "Saved on this phone — couldn't send just now (no signal?), it'll retry from History.";
+function showThankYou(sentOk, clientCopySent, hadClientEmail, wasEditing) {
+  let statusMsg;
+  if (wasEditing) {
+    statusMsg = sentOk
+      ? 'Job card updated and re-sent to the office.'
+      : "Changes saved on this phone — couldn't resend just now (no signal?), it'll retry from History.";
+  } else {
+    statusMsg = sentOk
+      ? 'Sent to the office.'
+      : "Saved on this phone — couldn't send just now (no signal?), it'll retry from History.";
+  }
   if (sentOk && hadClientEmail) {
     statusMsg += clientCopySent ? ' A copy was also emailed to the client.' : ' (Client copy could not be sent — check their email address.)';
   }
@@ -751,6 +799,146 @@ function resetForm() {
   renderPhotos('before'); renderPhotos('after');
   sigPads.customer.clear(); sigPads.driver.clear();
   updateJobNoBadge();
+
+  editingHistoryIdx = null;
+  document.getElementById('editing-banner').style.display = 'none';
+  document.getElementById('submit-btn').innerHTML = 'Complete Job Card';
+}
+
+// ---- View/Edit an existing job card from History ----
+function setCheckedGroup(groupId, values) {
+  const set = new Set(values || []);
+  document.querySelectorAll(`#${groupId} input[type="checkbox"]`).forEach(el => { el.checked = set.has(el.value); });
+}
+function setRadioGroup(groupId, value) {
+  document.querySelectorAll(`#${groupId} input[type="radio"]`).forEach(el => { el.checked = (el.value === value); });
+}
+
+async function loadPayloadIntoForm(p) {
+  document.getElementById('f-jobno').value = p.jobNo || '';
+  updateJobNoBadge();
+
+  const vehicleSelect = document.getElementById('f-vehicle');
+  const vehicleOptions = Array.from(vehicleSelect.options).map(o => o.value);
+  if (p.vehicle && vehicleOptions.includes(p.vehicle)) {
+    vehicleSelect.value = p.vehicle;
+    document.getElementById('f-vehicle-other-wrap').style.display = 'none';
+  } else if (p.vehicle) {
+    vehicleSelect.value = 'OTHER';
+    document.getElementById('f-vehicle-other-wrap').style.display = 'block';
+    document.getElementById('f-vehicle-other').value = p.vehicle;
+  } else {
+    vehicleSelect.selectedIndex = 0;
+    document.getElementById('f-vehicle-other-wrap').style.display = 'none';
+  }
+
+  document.getElementById('f-name').value = p.name || '';
+  document.getElementById('f-site').value = p.site || '';
+  document.getElementById('f-planon').value = p.planon || '';
+  document.getElementById('f-address').value = p.address || '';
+  document.getElementById('f-contact').value = p.contact || '';
+  document.getElementById('f-tel').value = p.tel || '';
+  document.getElementById('f-email').value = p.email || '';
+  document.getElementById('f-billing').value = p.billing || '';
+  document.getElementById('f-details').value = p.details || '';
+
+  setCheckedGroup('grp-jobtype', p.jobType);
+  setCheckedGroup('grp-draintype', p.drainType);
+  setCheckedGroup('grp-liquidwaste', p.liquidWaste);
+  setCheckedGroup('grp-exttank', p.extTank);
+  setCheckedGroup('grp-wastestream', p.wasteStream);
+  setCheckedGroup('grp-wastetype', p.wasteType);
+
+  const f = p.fattraps || {};
+  document.getElementById('c-fattrap-50').checked = !!f.l50;
+  document.getElementById('c-fattrap-50-qty').value = f.l50Qty || '';
+  document.getElementById('c-fattrap-80').checked = !!f.l80;
+  document.getElementById('c-fattrap-80-qty').value = f.l80Qty || '';
+  document.getElementById('c-fattrap-100').checked = !!f.l100;
+  document.getElementById('c-fattrap-100-qty').value = f.l100Qty || '';
+
+  document.getElementById('f-exttank-specify').value = p.extTankSpecify || '';
+
+  const c = p.consumables || {};
+  document.getElementById('c-degreaser').checked = !!c.degreaser;
+  document.getElementById('c-degreaser-l').value = c.degreaserL || '';
+  document.getElementById('c-disinfectant').checked = !!c.disinfectant;
+  document.getElementById('c-disinfectant-l').value = c.disinfectantL || '';
+  document.getElementById('c-acid').checked = !!c.acid;
+  document.getElementById('c-acid-l').value = c.acidL || '';
+  document.getElementById('c-microbes').checked = !!c.microbes;
+  document.getElementById('c-microbes-l').value = c.microbesL || '';
+  document.getElementById('c-beads').checked = !!c.beads;
+
+  document.getElementById('f-wastestream-other').value = p.wasteStreamOther || '';
+  document.getElementById('f-quote-req').value = p.quoteReq || '';
+
+  document.getElementById('mat-list').innerHTML = '';
+  (p.materials || []).forEach(m => addMatRow(m.name, m.qty));
+
+  pendingBefore = [...(p.photosBefore || [])];
+  pendingAfter = [...(p.photosAfter || [])];
+  renderPhotos('before'); renderPhotos('after');
+
+  document.getElementById('f-customer-name').value = p.customerName || '';
+  document.getElementById('f-driver-name').value = p.driverName || '';
+  sigPads.customer.clear(); sigPads.driver.clear();
+  await Promise.all([
+    sigPads.customer.loadFromDataURL(p.customerSignature),
+    sigPads.driver.loadFromDataURL(p.driverSignature)
+  ]);
+
+  const dumpSelect = document.getElementById('f-dumpsite');
+  const dumpOptions = Array.from(dumpSelect.options).map(o => o.value);
+  if (p.dumpSite && dumpOptions.includes(p.dumpSite)) {
+    dumpSelect.value = p.dumpSite;
+    document.getElementById('f-dumpsite-other-wrap').style.display = 'none';
+  } else if (p.dumpSite) {
+    dumpSelect.value = 'OTHER';
+    document.getElementById('f-dumpsite-other-wrap').style.display = 'block';
+    document.getElementById('f-dumpsite-other').value = p.dumpSite;
+  } else {
+    dumpSelect.selectedIndex = 0;
+    document.getElementById('f-dumpsite-other-wrap').style.display = 'none';
+  }
+
+  setRadioGroup('grp-needsdisposal', p.needsDisposalCert ? 'yes' : 'no');
+
+  document.getElementById('f-comments').value = p.comments || '';
+  setRadioGroup('grp-rating', p.rating || '');
+
+  document.getElementById('f-date').value = p.date || '';
+  document.getElementById('f-timein1').value = p.timeIn1 || '';
+  document.getElementById('f-timeout1').value = p.timeOut1 || '';
+  document.getElementById('f-timein2').value = p.timeIn2 || '';
+  document.getElementById('f-timeout2').value = p.timeOut2 || '';
+}
+
+async function openJobCardForView(idx) {
+  const item = history[idx];
+  if (!item || !item.payload) { toast('⚠️ Full job card details are missing on this device'); return; }
+
+  editingHistoryIdx = idx;
+
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-new').classList.add('active');
+  document.querySelector('nav button').classList.add('active');
+
+  await new Promise(resolve => requestAnimationFrame(resolve));
+  await loadPayloadIntoForm(item.payload);
+
+  document.getElementById('editing-banner').style.display = 'block';
+  document.getElementById('editing-jobno-label').textContent = item.jobNo;
+  document.getElementById('submit-btn').innerHTML = 'Update & Resend';
+
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  toast('Loaded Job Card #' + item.jobNo + ' — edit and tap Update & Resend, or Cancel to leave it as is');
+}
+
+function cancelEditJobCard() {
+  resetForm();
+  toast('Edit cancelled');
 }
 
 // ---- History ----
@@ -810,7 +998,7 @@ function renderHistory() {
             let disposalCell = `<span class="tag ${h.needsDisposalCert ? 'tag-disposal-yes' : 'tag-disposal-no'}">${h.needsDisposalCert ? 'Yes' : 'No'}</span>`;
             if (h.needsDisposalCert) disposalCell += h.disposalCertUploaded ? ' ✓' : ' ⏳';
             return `
-            <tr class="${flagged ? 'flagged' : ''}">
+            <tr class="${flagged ? 'flagged' : ''}" style="cursor:pointer;" onclick="openJobCardForView(${idx})" title="Tap to view/edit this job card">
               <td>#${escapeHtml(h.jobNo)}</td>
               <td>${escapeHtml(h.date)}</td>
               <td>${escapeHtml(h.driverName)}</td>
@@ -818,9 +1006,10 @@ function renderHistory() {
               <td>${disposalCell}</td>
               <td><span class="tag ${h.status === 'sent' ? 'tag-sent' : 'tag-failed'}">${h.status === 'sent' ? 'Sent ✓' : 'Failed'}</span></td>
               <td><div class="btn-cell">
-                ${h.status === 'failed' ? `<button class="btn btn-outline" onclick="resend(${idx})">Resend</button>` : ''}
-                <button class="btn btn-outline" onclick="openEditTimesModal(${idx})">Edit Times</button>
-                ${flagged ? `<button class="btn btn-primary" style="background:#a8281c;" onclick="openDisposalModal(${idx})">Upload Certificate</button>` : ''}
+                <button class="btn btn-outline" onclick="event.stopPropagation();openJobCardForView(${idx})">View / Edit</button>
+                ${h.status === 'failed' ? `<button class="btn btn-outline" onclick="event.stopPropagation();resend(${idx})">Resend</button>` : ''}
+                <button class="btn btn-outline" onclick="event.stopPropagation();openEditTimesModal(${idx})">Edit Times</button>
+                ${flagged ? `<button class="btn btn-primary" style="background:#a8281c;" onclick="event.stopPropagation();openDisposalModal(${idx})">Upload Certificate</button>` : ''}
               </div></td>
             </tr>`;
           }).join('')}
