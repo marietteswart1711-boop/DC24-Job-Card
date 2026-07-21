@@ -328,7 +328,22 @@ def _downsample_for_pdf(raw_bytes, target_width_pt, dpi=150):
     large letterhead banner. Returns (jpeg_bytes, width_px, height_px).
     """
     pil_im = PILImage.open(BytesIO(raw_bytes))
-    if pil_im.mode not in ("RGB", "L"):
+    if pil_im.mode in ("RGBA", "LA") or (pil_im.mode == "P" and "transparency" in pil_im.info):
+        # Signatures come off the phone's canvas as PNGs with a *transparent*
+        # background (only the drawn stroke is opaque). Simply dropping the
+        # alpha channel with .convert("RGB") ignores that transparency and
+        # keeps whatever RGB values were sitting underneath it — which on a
+        # blank canvas is (0,0,0), i.e. solid black — so the signature turned
+        # into a black box with just a faint outline where the stroke's
+        # anti-aliased edge partially blended in. Compositing onto a white
+        # background first (using the image's own alpha as a mask) fixes
+        # that: transparent areas become white paper, same as the rest of
+        # the PDF, and the stroke stays exactly as drawn.
+        pil_im = pil_im.convert("RGBA")
+        white_bg = PILImage.new("RGB", pil_im.size, (255, 255, 255))
+        white_bg.paste(pil_im, mask=pil_im.split()[3])
+        pil_im = white_bg
+    elif pil_im.mode not in ("RGB", "L"):
         pil_im = pil_im.convert("RGB")
     target_width_px = max(1, int(target_width_pt / 72.0 * dpi))
     if pil_im.width > target_width_px:
